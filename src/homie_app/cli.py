@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="homie", description="Homie AI — Local Personal Assistant")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # homie start
+    start_parser = subparsers.add_parser("start", help="Start the assistant")
+    start_parser.add_argument("--config", type=str, help="Path to config file")
+    start_parser.add_argument("--no-voice", action="store_true", help="Disable voice pipeline")
+    start_parser.add_argument("--no-tray", action="store_true", help="Disable system tray")
+
+    # homie init
+    init_parser = subparsers.add_parser("init", help="Initialize Homie for first use")
+    init_parser.add_argument("--auto", action="store_true", help="Fully automatic setup")
+
+    # homie model
+    model_parser = subparsers.add_parser("model", help="Model management")
+    model_sub = model_parser.add_subparsers(dest="model_command")
+    model_sub.add_parser("list", help="List installed models")
+    dl = model_sub.add_parser("download", help="Download a model from HuggingFace")
+    dl.add_argument("repo_id", type=str)
+    dl.add_argument("--filename", type=str, default="")
+    add = model_sub.add_parser("add", help="Register a local model file")
+    add.add_argument("path", type=str)
+    add.add_argument("--name", type=str, required=True)
+    add.add_argument("--format", type=str, default="gguf", choices=["gguf", "safetensors"])
+    add.add_argument("--params", type=str, default="unknown")
+    rm = model_sub.add_parser("remove", help="Remove a model")
+    rm.add_argument("name", type=str)
+    sw = model_sub.add_parser("switch", help="Switch active model")
+    sw.add_argument("name", type=str)
+    model_sub.add_parser("benchmark", help="Benchmark current model")
+
+    # homie plugin
+    plugin_parser = subparsers.add_parser("plugin", help="Plugin management")
+    plugin_sub = plugin_parser.add_subparsers(dest="plugin_command")
+    plugin_sub.add_parser("list", help="List all plugins")
+    en = plugin_sub.add_parser("enable", help="Enable a plugin")
+    en.add_argument("name", type=str)
+    dis = plugin_sub.add_parser("disable", help="Disable a plugin")
+    dis.add_argument("name", type=str)
+
+    # homie backup / restore
+    backup = subparsers.add_parser("backup", help="Create encrypted backup")
+    backup.add_argument("--to", type=str, required=True, dest="backup_path")
+    restore = subparsers.add_parser("restore", help="Restore from backup")
+    restore.add_argument("--from", type=str, required=True, dest="restore_path")
+
+    # homie chat (interactive)
+    subparsers.add_parser("chat", help="Start interactive chat mode")
+
+    return parser
+
+
+def cmd_chat(args, config=None):
+    from homie_core.config import load_config
+    cfg = config or load_config(args.config if hasattr(args, 'config') else None)
+    print(f"Homie AI v0.1.0")
+    print(f"Type your message or 'quit' to exit.\n")
+
+    from homie_core.memory.working import WorkingMemory
+    wm = WorkingMemory()
+
+    while True:
+        try:
+            user_input = input("You> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            break
+        if user_input.lower() in ("quit", "exit", ":q"):
+            print("Goodbye!")
+            break
+        if not user_input:
+            continue
+        wm.add_message("user", user_input)
+        print(f"Homie> [Model not loaded — run 'homie init' first]\n")
+
+
+def cmd_model(args, config=None):
+    from homie_core.config import load_config
+    from homie_core.model.registry import ModelRegistry
+    cfg = config or load_config()
+    registry = ModelRegistry(Path(cfg.storage.path) / cfg.storage.models_dir)
+    registry.initialize()
+
+    if args.model_command == "list":
+        models = registry.list_models()
+        if not models:
+            print("No models installed. Run 'homie model download <repo_id>' or 'homie init'.")
+        for m in models:
+            active = " [ACTIVE]" if m.active else ""
+            print(f"  {m.name} ({m.params}, {m.format}){active}")
+            print(f"    Path: {m.path}")
+
+    elif args.model_command == "add":
+        path = Path(args.path)
+        if not path.exists():
+            print(f"Error: File not found: {path}")
+            return
+        registry.register(args.name, path, format=args.format, params=args.params)
+        print(f"Registered model '{args.name}' from {path}")
+
+    elif args.model_command == "remove":
+        registry.remove(args.name)
+        print(f"Removed model '{args.name}'")
+
+    elif args.model_command == "switch":
+        if not registry.get(args.name):
+            print(f"Error: Model '{args.name}' not found")
+            return
+        registry.set_active(args.name)
+        print(f"Switched to model '{args.name}'")
+
+    else:
+        print("Usage: homie model {list|download|add|remove|switch|benchmark}")
+
+
+def cmd_plugin(args, config=None):
+    from homie_core.plugins.manager import PluginManager
+    mgr = PluginManager()
+
+    if args.plugin_command == "list":
+        plugins = mgr.list_plugins()
+        if not plugins:
+            print("No plugins registered.")
+        for p in plugins:
+            status = "enabled" if p["enabled"] else "disabled"
+            print(f"  {p['name']} ({status}) - {p['description']}")
+
+    elif args.plugin_command == "enable":
+        if mgr.enable(args.name):
+            print(f"Enabled plugin '{args.name}'")
+        else:
+            print(f"Failed to enable plugin '{args.name}'")
+
+    elif args.plugin_command == "disable":
+        if mgr.disable(args.name):
+            print(f"Disabled plugin '{args.name}'")
+        else:
+            print(f"Failed to disable plugin '{args.name}'")
+
+    else:
+        print("Usage: homie plugin {list|enable|disable}")
+
+
+def cmd_backup(args, config=None):
+    from homie_core.config import load_config
+    from homie_core.storage.backup import BackupManager
+    import getpass
+    cfg = config or load_config()
+    passphrase = getpass.getpass("Backup passphrase: ")
+    mgr = BackupManager()
+    out = mgr.create_backup(Path(cfg.storage.path), Path(args.backup_path), passphrase)
+    print(f"Backup created at {out}")
+
+
+def cmd_restore(args, config=None):
+    from homie_core.config import load_config
+    from homie_core.storage.backup import BackupManager
+    import getpass
+    cfg = config or load_config()
+    passphrase = getpass.getpass("Backup passphrase: ")
+    mgr = BackupManager()
+    mgr.restore_backup(Path(args.restore_path), Path(cfg.storage.path), passphrase)
+    print(f"Restored to {cfg.storage.path}")
+
+
+def main(argv: list[str] | None = None):
+    parser = create_parser()
+    args = parser.parse_args(argv)
+
+    if args.command is None:
+        parser.print_help()
+        return
+
+    commands = {
+        "chat": cmd_chat,
+        "model": cmd_model,
+        "plugin": cmd_plugin,
+        "backup": cmd_backup,
+        "restore": cmd_restore,
+    }
+
+    handler = commands.get(args.command)
+    if handler:
+        handler(args)
+    elif args.command == "start":
+        print("Starting Homie AI...")
+        cmd_chat(args)
+    elif args.command == "init":
+        print("Initializing Homie AI...")
+        from homie_app.init import run_init
+        run_init(auto=getattr(args, 'auto', False))
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
