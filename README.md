@@ -1,58 +1,108 @@
-# HOMIE (Home Orchestrated Machine Intelligence Engine)
+# Homie AI
 
-Local-first personal assistant that runs only on your machines and Tailnet. Controller orchestrates tasks via Node Agents or SSH, with a localhost dashboard + tray, strict safety policy, and Ollama-based planning (glm-4.7-flash by default).
+Fully local, privacy-first personal AI assistant. Runs entirely on your machine with no cloud dependencies.
+
+## Features
+
+- **Local inference** — loads GGUF models directly via [llama.cpp](https://github.com/ggml-org/llama.cpp) with GPU acceleration (CUDA)
+- **Privacy first** — all data stays on your machine, no telemetry, no external API calls
+- **Voice pipeline** — wake word detection, speech-to-text, text-to-speech (optional)
+- **Plugin system** — 12 built-in plugins (system, clipboard, browser, IDE, git, health, music, notes, shortcuts, terminal, network, workflows)
+- **Behavioral intelligence** — habit detection, routine observation, profile synthesis
+- **Memory system** — working, episodic, and semantic memory with consolidation and forgetting
 
 ## Quickstart
-- Create and activate a virtual environment.
-  - Windows: `python -m venv .venv && .\.venv\Scripts\activate`
-  - Linux/macOS: `python -m venv .venv && source .venv/bin/activate`
-- Install deps: `pip install -r requirements.txt`
-- Pull the model: `ollama pull glm-4.7-flash`
-- Configure controller + nodes: edit `homie.config.yaml` (or set `HOMIE_CONFIG`).
-- Run the CLI (from repo root, with `src` on PYTHONPATH):
-  - Windows PowerShell: `set PYTHONPATH=src; python -m homie.homie -c homie.config.yaml`
-  - Linux/macOS: `PYTHONPATH=src python -m homie.homie -c homie.config.yaml`
-- Run node agent (per machine, Tailnet-bound): `PYTHONPATH=src HOMIE_SHARED_SECRET=... uvicorn homie.node.app:app --host 100.x.y.z --port 8443 --ssl-keyfile ... --ssl-certfile ...`
-- Run dashboard (controller): `PYTHONPATH=src uvicorn homie.controller.dashboard:create_app --factory --port 8080`
 
-## Configuration (`homie.config.yaml`)
-- `llm`: provider (`ollama`), `base_url`, `model`, `temperature`, `max_tokens`, `timeout_sec`.
-- `orchestrator`: `mode`, `backend=node|tailscale_ssh|openssh`, `dry_run`, `show_plan`, `allowed_actions`.
-- `ssh`: `default_user`, `connect_timeout_sec`, `method` (paramiko|openssh|tailscale_ssh), per-target `host`/`port`/`user` (plus optional `key_filename`/`password`). Use `method: openssh` if you rely on your local `~/.ssh/config`/Tailnet hostnames (e.g., `ssh -o PreferredAuthentications=publickey -o PasswordAuthentication=no msi`).
-- `node_api`: per-node `base_url` (Tailnet IP) + `shared_secret`, `timeout_sec`.
-- `privacy`: `data_retention_days`, `max_storage_mb`, permissions flags for signals/screenshots.
-- `safety`: `blocked_substrings`, `max_command_len`, `require_reason`.
-- Env overrides: `HOMIE_MODEL` and `HOMIE_OLLAMA_URL` take precedence.
+### Install
 
-## CLI usage
-- Prompt: `HOMIE> `
-- Natural language requests are planned by the LLM and validated against safety rules.
-- Meta commands (no LLM):
-  - `:targets` - list configured hosts
-  - `:model` - show active model/provider/base_url
-  - `:dryrun on|off` - toggle execution
-  - `:help`, `:exit`
-- Planned JSON is printed before execution (unless `show_plan=false`).
+```bash
+pip install homie-ai
+```
 
-## Actions
-- `run_command`: executes the planned `command` on one target or `all`.
-- `check_status`: runs `uptime && df -h / && free -h` and, if available, `nvidia-smi`.
-- `copy_file`: uses SFTP; expects `args.src` and `args.dest`.
+### Setup
 
-## Examples
-- `check status on msi`
-- `run docker ps on all`
-- `copy the file C:\\tmp\\bundle.tar.gz to /tmp on lenovo`
-- `show gpu usage on msi`
+```bash
+# Interactive setup — detects hardware, finds/downloads a model
+homie init
 
-## Components (high level)
-- Controller: orchestrator, dashboard (FastAPI localhost), scheduler, notifier, storage (SQLite).
-- Node Agent: lightweight FastAPI bound to Tailnet IP/localhost, runs tasks locally with HMAC auth.
-- Tray: start/stop services, pause suggestions, record workflow, open dashboard, clear data.
+# Or start chatting directly (uses default model path)
+homie chat
+```
 
-Privacy defaults: no outbound data, no passive screenshots/keystrokes, recording is opt-in and visibly indicated.
+### Model Setup
 
-## Notes
-- If JSON from the model is malformed, HOMIE performs one repair pass; if parsing still fails, nothing is executed.
-- Safety guardrails block dangerous substrings/patterns and overlong commands.
-- Dry run mode honors config and runtime toggles; no SSH commands are issued when enabled.
+Homie uses [llama.cpp](https://github.com/ggml-org/llama.cpp) server for inference. Download the pre-built binary for your platform from the [releases page](https://github.com/ggml-org/llama.cpp/releases) and place it in `~/.homie/llama-server/`.
+
+For Windows with CUDA:
+```bash
+# Download and extract to ~/.homie/llama-server/
+# The zip should contain llama-server.exe and required DLLs
+```
+
+Homie auto-discovers GGUF model files in common locations (`~/.lmstudio/models/`, `~/.homie/models/`). You can also register models manually:
+
+```bash
+homie model add /path/to/model.gguf --name my-model --format gguf --params 35B
+homie model switch my-model
+```
+
+## Configuration
+
+Homie uses `homie.config.yaml` in the working directory or `~/.homie/`:
+
+```yaml
+llm:
+  backend: gguf
+  model_path: /path/to/your/model.gguf
+  context_length: 65536
+  gpu_layers: -1       # -1 = offload all layers to GPU
+  max_tokens: 2048
+  temperature: 0.7
+
+voice:
+  enabled: false
+  wake_word: "hey homie"
+  mode: push_to_talk
+
+storage:
+  path: ~/.homie
+```
+
+Environment variable overrides: `HOMIE_LLM_BACKEND`, `HOMIE_LLM_MODEL_PATH`, `HOMIE_LLM_GPU_LAYERS`, `HOMIE_VOICE_ENABLED`, `HOMIE_STORAGE_PATH`, `HOMIE_USER_NAME`.
+
+## CLI Commands
+
+```
+homie start          Start the assistant (alias for chat)
+homie chat           Interactive chat mode
+homie init           First-time setup wizard
+homie model list     List installed models
+homie model add      Register a local model file
+homie model switch   Switch the active model
+homie plugin list    List available plugins
+homie plugin enable  Enable a plugin
+homie backup --to    Create encrypted backup
+homie restore --from Restore from backup
+```
+
+## Optional Dependencies
+
+```bash
+pip install homie-ai[model]    # HuggingFace model downloading
+pip install homie-ai[voice]    # Voice pipeline (STT, TTS, wake word)
+pip install homie-ai[context]  # System context tracking
+pip install homie-ai[storage]  # Vector DB and encrypted backups
+pip install homie-ai[app]      # Dashboard, system tray, scheduling
+pip install homie-ai[all]      # Everything
+```
+
+## Requirements
+
+- Python 3.11+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) server binary (b8149+ for Qwen3.5 support)
+- A GGUF model file (auto-detected or manually configured)
+- NVIDIA GPU recommended (CUDA); CPU-only mode is supported
+
+## License
+
+[Mozilla Public License 2.0](LICENSE)

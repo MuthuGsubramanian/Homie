@@ -27,7 +27,7 @@ class BrainOrchestrator:
         self._wm.add_message("user", user_input)
         context = self._build_context(user_input)
         prompt = self._build_prompt(user_input, context)
-        response = self._engine.generate(prompt, max_tokens=1024, temperature=0.7)
+        response = self._engine.generate(prompt, max_tokens=2048, temperature=0.7)
         self._wm.add_message("assistant", response)
         return response
 
