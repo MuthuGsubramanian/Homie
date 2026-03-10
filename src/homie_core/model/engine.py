@@ -20,7 +20,7 @@ class ModelEngine:
     def current_model(self) -> Optional[ModelEntry]:
         return self._current_model
 
-    def load(self, entry: ModelEntry, n_ctx: int = 4096, n_gpu_layers: int = -1) -> None:
+    def load(self, entry: ModelEntry, n_ctx: int = 4096, n_gpu_layers: int = -1, **kwargs) -> None:
         if entry.format == "gguf":
             from homie_core.model.gguf_backend import GGUFBackend
             backend = GGUFBackend()
@@ -30,6 +30,15 @@ class ModelEngine:
             from homie_core.model.transformers_backend import TransformersBackend
             backend = TransformersBackend()
             backend.load(entry.path)
+            self._backend = backend
+        elif entry.format == "cloud":
+            from homie_core.model.cloud_backend import CloudBackend
+            backend = CloudBackend()
+            backend.load(
+                model_id=entry.path,
+                api_key=kwargs.get("api_key", ""),
+                base_url=kwargs.get("base_url", "https://api.openai.com/v1"),
+            )
             self._backend = backend
         else:
             raise ValueError(f"Unsupported format: {entry.format}")
