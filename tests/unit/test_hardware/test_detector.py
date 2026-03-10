@@ -12,7 +12,15 @@ def test_detect_hardware_returns_info():
 def test_recommend_model_16gb():
     rec = recommend_model(gpu_vram_gb=16.0)
     assert rec["quant"] == "Q4_K_M"
-    assert "72B" in rec["model"] or "70B" in rec["model"]
+    assert rec["model"] == "Qwen3.5-35B-A3B"
+    assert rec["context_length"] == 65536
+    assert rec["repo_id"] != ""
+
+
+def test_recommend_model_15gb():
+    """RTX 4080 reports ~15.9GB, should still get the top-tier model."""
+    rec = recommend_model(gpu_vram_gb=15.9)
+    assert rec["model"] == "Qwen3.5-35B-A3B"
 
 
 def test_recommend_model_8gb():
