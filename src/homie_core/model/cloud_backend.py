@@ -23,7 +23,7 @@ class CloudBackend:
         self,
         model_id: str,
         api_key: str,
-        base_url: str = "https://api.openai.com",
+        base_url: str = "https://api.openai.com/v1",
     ) -> None:
         """Connect to the API and verify reachability via the models endpoint."""
         self._base_url = base_url.rstrip("/")
@@ -34,7 +34,7 @@ class CloudBackend:
         # server answered, so the connection works; auth is checked at
         # generation time).
         try:
-            req = Request(f"{self._base_url}/v1/models", method="GET")
+            req = Request(f"{self._base_url}/models", method="GET")
             req.add_header("Authorization", f"Bearer {self._api_key}")
             with urlopen(req, timeout=10):
                 pass
@@ -75,7 +75,7 @@ class CloudBackend:
 
         data = json.dumps(payload).encode("utf-8")
         req = Request(
-            f"{self._base_url}/v1/chat/completions", data=data, method="POST"
+            f"{self._base_url}/chat/completions", data=data, method="POST"
         )
         req.add_header("Content-Type", "application/json")
         req.add_header("Authorization", f"Bearer {self._api_key}")
@@ -112,7 +112,7 @@ class CloudBackend:
 
         data = json.dumps(payload).encode("utf-8")
         req = Request(
-            f"{self._base_url}/v1/chat/completions", data=data, method="POST"
+            f"{self._base_url}/chat/completions", data=data, method="POST"
         )
         req.add_header("Content-Type", "application/json")
         req.add_header("Authorization", f"Bearer {self._api_key}")
@@ -147,10 +147,10 @@ class CloudBackend:
     def discover_models(
         self,
         api_key: str,
-        base_url: str = "https://api.openai.com",
+        base_url: str = "https://api.openai.com/v1",
     ) -> list[str]:
         """Query /v1/models and return a list of model IDs. Returns [] on failure."""
-        url = f"{base_url.rstrip('/')}/v1/models"
+        url = f"{base_url.rstrip('/')}/models"
         req = Request(url, method="GET")
         req.add_header("Authorization", f"Bearer {api_key}")
         try:
