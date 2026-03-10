@@ -31,6 +31,7 @@ def test_cloud_setup_saves_config(tmp_path, monkeypatch):
     assert cfg.llm.api_key == "sk-test-key"
     assert cfg.llm.model_path == "gpt-4o"
     assert cfg.user_name == "TestUser"
+    assert cfg.llm.api_base_url == "https://api.openai.com/v1"
 
     # Verify YAML was written
     config_file = tmp_path / "homie.config.yaml"

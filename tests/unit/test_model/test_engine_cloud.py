@@ -61,7 +61,7 @@ def mock_server():
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield f"http://127.0.0.1:{port}"
+    yield f"http://127.0.0.1:{port}/v1"
     server.shutdown()
 
 
