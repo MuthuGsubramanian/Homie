@@ -26,7 +26,7 @@ class VoiceConfig(BaseModel):
     stt_model: str = "large-v3"
     tts_voice: str = "default"
     mode: str = "text_only"
-    hotkey: str = "F9"
+    hotkey: str = "alt+8"
 
 
 class StorageConfig(BaseModel):

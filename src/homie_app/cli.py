@@ -55,6 +55,10 @@ def create_parser() -> argparse.ArgumentParser:
     # homie chat (interactive)
     subparsers.add_parser("chat", help="Start interactive chat mode")
 
+    # homie daemon
+    daemon_parser = subparsers.add_parser("daemon", help="Run as always-active background daemon")
+    daemon_parser.add_argument("--config", type=str, help="Path to config file")
+
     return parser
 
 
@@ -235,6 +239,12 @@ def cmd_restore(args, config=None):
     print(f"Restored to {cfg.storage.path}")
 
 
+def cmd_daemon(args, config=None):
+    from homie_app.daemon import HomieDaemon
+    daemon = HomieDaemon(config_path=getattr(args, 'config', None))
+    daemon.start()
+
+
 def main(argv: list[str] | None = None):
     parser = create_parser()
     args = parser.parse_args(argv)
@@ -249,6 +259,7 @@ def main(argv: list[str] | None = None):
         "plugin": cmd_plugin,
         "backup": cmd_backup,
         "restore": cmd_restore,
+        "daemon": cmd_daemon,
     }
 
     handler = commands.get(args.command)
