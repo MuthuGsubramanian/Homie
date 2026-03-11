@@ -75,7 +75,15 @@ def _apply_env_overrides(cfg: HomieConfig) -> HomieConfig:
         "HOMIE_API_KEY": ("llm", "api_key"),
         "HOMIE_API_BASE_URL": ("llm", "api_base_url"),
         "HOMIE_USER_NAME": ("user_name",),
+        "HF_KEY": ("llm", "api_key"),
     }
+
+    # Auto-detect HF backend when HF_KEY is present and no explicit config
+    hf_key = os.environ.get("HF_KEY", "")
+    if hf_key and not cfg.llm.api_key and cfg.llm.backend == "gguf":
+        cfg.llm.api_key = hf_key
+        cfg.llm.backend = "hf"
+        cfg.llm.model_path = "mistralai/Mistral-Small-3.1-24B-Instruct-2503"
     for env_var, path in env_map.items():
         val = os.environ.get(env_var)
         if val is None:
