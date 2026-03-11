@@ -62,34 +62,87 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_model_engine(cfg):
-    """Load the model engine from local file or cloud API."""
-    from homie_core.model.engine import ModelEngine
-    from homie_core.model.registry import ModelRegistry, ModelEntry
+def _validate_model_entry(entry, cfg) -> str | None:
+    """Check if a model entry is actually usable. Returns error message or None."""
+    if entry.format == "cloud":
+        if not cfg.llm.api_key:
+            return (
+                f"Cloud model '{entry.name}' requires an API key.\n"
+                f"  Set it via: HOMIE_API_KEY env var, or re-run 'homie init'."
+            )
+        if not cfg.llm.api_base_url:
+            return (
+                f"Cloud model '{entry.name}' has no endpoint configured.\n"
+                f"  Re-run 'homie init' to set up the cloud provider."
+            )
+    else:
+        model_path = Path(entry.path)
+        if not model_path.exists():
+            return (
+                f"Local model file not found: {entry.path}\n"
+                f"  Download it with: homie model download {entry.repo_id or '<repo_id>'}\n"
+                f"  Or re-run 'homie init' to configure a different model."
+            )
+    return None
 
-    engine = ModelEngine()
 
-    # Check registry for an active model first
-    registry = ModelRegistry(Path(cfg.storage.path) / cfg.storage.models_dir)
-    registry.initialize()
+def _pick_usable_model(registry, cfg):
+    """Find the best usable model: active first, then any valid one."""
+    from homie_core.model.registry import ModelEntry
 
+    # Try active model first
     entry = registry.get_active()
+    if entry:
+        error = _validate_model_entry(entry, cfg)
+        if not error:
+            return entry, None
+        # Active model isn't usable — try others
+        print(f"  Active model not usable: {error}")
 
-    if not entry and cfg.llm.model_path:
-        entry = ModelEntry(
+    # Try all registered models
+    for candidate in registry.list_models():
+        if candidate.active:
+            continue  # Already tried
+        error = _validate_model_entry(candidate, cfg)
+        if not error:
+            print(f"  Falling back to: {candidate.name}")
+            return candidate, None
+
+    # Try config fallback
+    if cfg.llm.model_path:
+        fallback = ModelEntry(
             name=cfg.llm.model_path if cfg.llm.backend == "cloud" else "Qwen3.5-35B-A3B",
             path=cfg.llm.model_path,
             format=cfg.llm.backend,
             params="cloud" if cfg.llm.backend == "cloud" else "35B-A3B",
         )
+        error = _validate_model_entry(fallback, cfg)
+        if not error:
+            return fallback, None
 
+    return None, "No usable model found. Run 'homie init' to set up."
+
+
+def _load_model_engine(cfg):
+    """Load the model engine from local file or cloud API."""
+    from homie_core.model.engine import ModelEngine
+    from homie_core.model.registry import ModelRegistry
+
+    engine = ModelEngine()
+
+    # Check registry for a usable model
+    registry = ModelRegistry(Path(cfg.storage.path) / cfg.storage.models_dir)
+    registry.initialize()
+
+    entry, error = _pick_usable_model(registry, cfg)
     if not entry:
+        print(f"  {error}")
         return None, None
 
     if entry.format == "cloud":
         print(f"  Connecting to cloud API: {entry.path}")
-        print(f"  Endpoint: {cfg.llm.api_base_url or 'https://api.openai.com/v1'}")
-        engine.load(entry, api_key=cfg.llm.api_key, base_url=cfg.llm.api_base_url or "https://api.openai.com/v1")
+        print(f"  Endpoint: {cfg.llm.api_base_url}")
+        engine.load(entry, api_key=cfg.llm.api_key, base_url=cfg.llm.api_base_url)
         print(f"  Connected!")
     else:
         print(f"  Loading model: {entry.name} ({entry.format})")
