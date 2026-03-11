@@ -17,6 +17,7 @@ from homie_core.intelligence.observer_loop import ObserverLoop
 from homie_core.intelligence.audit_log import AuditLogger
 from homie_core.intelligence.flow_detector import FlowDetector
 from homie_core.intelligence.workflow_predictor import WorkflowPredictor
+from homie_core.intelligence.proactive_engine import ProactiveEngine
 from homie_core.memory.working import WorkingMemory
 from homie_core.brain.orchestrator import BrainOrchestrator
 from homie_core.rag.pipeline import RagPipeline
@@ -93,6 +94,12 @@ class HomieDaemon:
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
 
+        # Proactive suggestion engine
+        self._proactive_engine = ProactiveEngine(
+            working_memory=self._working_memory,
+            interruption_model=self._interruption_model,
+        )
+
         # Observer loop — with neural components if available
         self._observer = ObserverLoop(
             working_memory=self._working_memory,
@@ -105,6 +112,7 @@ class HomieDaemon:
             preference_engine=self._preference_engine,
             workflow_predictor=self._workflow_predictor,
             flow_detector=self._flow_detector,
+            proactive_engine=self._proactive_engine,
         )
 
         # UI components
