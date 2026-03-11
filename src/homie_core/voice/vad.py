@@ -44,3 +44,62 @@ class VoiceActivityDetector:
         if not self._energy_history:
             return 0.0
         return sum(self._energy_history) / len(self._energy_history)
+
+
+# ---------------------------------------------------------------------------
+# Lightweight VAD wrapper (used by VoicePipeline)
+# ---------------------------------------------------------------------------
+
+import struct as _struct
+from typing import Optional as _Optional
+
+try:
+    import webrtcvad as _webrtcvad  # type: ignore[import-untyped]
+    _HAS_WEBRTCVAD = True
+except ImportError:
+    _HAS_WEBRTCVAD = False
+
+
+class VAD:
+    """Wraps webrtcvad or falls back to energy-based detection.
+
+    Parameters
+    ----------
+    aggressiveness : int
+        0-3, where 3 is the most aggressive at filtering non-speech.
+    sample_rate : int
+        Must be 8000, 16000, 32000, or 48000 for webrtcvad.
+    energy_threshold : int
+        RMS threshold for the energy-based fallback.
+    """
+
+    def __init__(
+        self,
+        aggressiveness: int = 2,
+        sample_rate: int = 16_000,
+        energy_threshold: int = 300,
+    ) -> None:
+        self.sample_rate = sample_rate
+        self.energy_threshold = energy_threshold
+        self._vad: _Optional[object] = None
+
+        if _HAS_WEBRTCVAD:
+            self._vad = _webrtcvad.Vad(aggressiveness)
+
+    def is_speech(self, audio_chunk: bytes) -> bool:
+        """Return True if *audio_chunk* likely contains speech."""
+        if self._vad is not None:
+            try:
+                return self._vad.is_speech(audio_chunk, self.sample_rate)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        return self._energy_detect(audio_chunk)
+
+    def _energy_detect(self, audio_chunk: bytes) -> bool:
+        """Simple RMS-energy detector as fallback."""
+        n_samples = len(audio_chunk) // 2
+        if n_samples == 0:
+            return False
+        samples = _struct.unpack(f"<{n_samples}h", audio_chunk)
+        rms = (sum(s * s for s in samples) / n_samples) ** 0.5
+        return rms > self.energy_threshold

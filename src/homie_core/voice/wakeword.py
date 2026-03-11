@@ -43,3 +43,38 @@ class WakeWordEngine:
     @property
     def is_running(self) -> bool:
         return self._running
+
+
+# ---------------------------------------------------------------------------
+# Lightweight text-based wake-word detector (used by VoicePipeline)
+# ---------------------------------------------------------------------------
+
+DEFAULT_WAKE_PHRASE = "hey homie"
+
+
+class WakeWordDetector:
+    """Detects the wake phrase in transcribed text snippets.
+
+    Parameters
+    ----------
+    wake_phrase : str
+        The phrase to listen for (case-insensitive).
+    on_detected : callable, optional
+        Callback invoked (no args) when wake word is detected.
+    """
+
+    def __init__(
+        self,
+        wake_phrase: str = DEFAULT_WAKE_PHRASE,
+        on_detected: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self.wake_phrase = wake_phrase.lower().strip()
+        self.on_detected = on_detected
+
+    def check(self, text: str) -> bool:
+        """Return True if *text* contains the wake phrase."""
+        if self.wake_phrase in text.lower():
+            if self.on_detected is not None:
+                self.on_detected()
+            return True
+        return False
