@@ -81,7 +81,7 @@ class CloudBackend:
         req.add_header("Authorization", f"Bearer {self._api_key}")
 
         try:
-            with urlopen(req, timeout=300) as resp:
+            with urlopen(req, timeout=60) as resp:
                 result = json.loads(resp.read())
                 return result["choices"][0]["message"].get("content", "") or ""
         except HTTPError as exc:

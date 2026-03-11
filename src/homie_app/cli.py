@@ -139,16 +139,30 @@ def _load_model_engine(cfg):
         print(f"  {error}")
         return None, None
 
-    if entry.format == "cloud":
-        print(f"  Connecting to cloud API: {entry.path}")
-        print(f"  Endpoint: {cfg.llm.api_base_url}")
-        engine.load(entry, api_key=cfg.llm.api_key, base_url=cfg.llm.api_base_url)
-        print(f"  Connected!")
-    else:
-        print(f"  Loading model: {entry.name} ({entry.format})")
-        print(f"  Path: {entry.path}")
-        print(f"  Context: {cfg.llm.context_length:,} tokens")
-        engine.load(entry, n_ctx=cfg.llm.context_length, n_gpu_layers=cfg.llm.gpu_layers)
+    try:
+        if entry.format == "cloud":
+            print(f"  Connecting to cloud API: {entry.path}")
+            print(f"  Endpoint: {cfg.llm.api_base_url}")
+            engine.load(entry, api_key=cfg.llm.api_key, base_url=cfg.llm.api_base_url)
+            print(f"  Connected!")
+        else:
+            print(f"  Loading model: {entry.name} ({entry.format})")
+            print(f"  Path: {entry.path}")
+            print(f"  Context: {cfg.llm.context_length:,} tokens")
+            engine.load(entry, n_ctx=cfg.llm.context_length, n_gpu_layers=cfg.llm.gpu_layers)
+    except FileNotFoundError as e:
+        print(f"  Failed: {e}")
+        print(f"  Make sure the model file exists or install llama-server.")
+        return None, None
+    except ConnectionError as e:
+        print(f"  Connection failed: {e}")
+        return None, None
+    except TimeoutError as e:
+        print(f"  Timed out loading model: {e}")
+        return None, None
+    except Exception as e:
+        print(f"  Failed to load model: {e}")
+        return None, None
 
     print(f"  Model loaded successfully!")
     return engine, entry
@@ -199,6 +213,13 @@ def cmd_chat(args, config=None):
             finally:
                 spinner.stop()
             print(f"Homie> {response}\n")
+        except TimeoutError as e:
+            print(f"Homie> Timed out waiting for a response.")
+            print(f"       {e}")
+            print(f"       Try a shorter question, or check your model with 'homie model list'.\n")
+        except ConnectionError as e:
+            print(f"Homie> Connection failed: {e}")
+            print(f"       Check your network or API configuration.\n")
         except Exception as e:
             print(f"Homie> [Error: {e}]\n")
 

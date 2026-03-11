@@ -105,10 +105,12 @@ class HomieDaemon:
         prompt = f"You are Homie, a helpful AI assistant. Be concise.\n\n{context}\n\nUser: {text}\nAssistant:"
 
         try:
-            response = self._engine.generate(prompt, max_tokens=2048)
+            response = self._engine.generate(prompt, max_tokens=2048, timeout=120)
             self._audit.log_query(prompt=text, response=response,
                                   model=self._config.llm.model_path)
             return response
+        except TimeoutError:
+            return "Timed out waiting for a response. The model may be overloaded — try a shorter question."
         except Exception as e:
             return f"Error: {e}"
 
