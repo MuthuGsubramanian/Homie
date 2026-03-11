@@ -45,10 +45,38 @@ class ModelEngine:
         self._loaded = True
         self._current_model = entry
 
-    def generate(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.7, stop: Optional[list[str]] = None) -> str:
+    def generate(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.7, stop: Optional[list[str]] = None, timeout: int = 120) -> str:
+        """Generate a response. Raises TimeoutError if no response within timeout seconds."""
+        import threading
+
         if not self._loaded:
             raise RuntimeError("No model loaded")
-        return self._backend.generate(prompt, max_tokens=max_tokens, temperature=temperature, stop=stop)
+
+        result = [None]
+        error = [None]
+
+        def _run():
+            try:
+                result[0] = self._backend.generate(
+                    prompt, max_tokens=max_tokens,
+                    temperature=temperature, stop=stop,
+                )
+            except Exception as e:
+                error[0] = e
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout)
+
+        if thread.is_alive():
+            raise TimeoutError(
+                f"Model did not respond within {timeout}s. "
+                f"The model may be too large for your hardware, or the server may be unresponsive. "
+                f"Try a smaller model or check 'homie model list'."
+            )
+        if error[0]:
+            raise error[0]
+        return result[0] or ""
 
     def stream(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.7, stop: Optional[list[str]] = None) -> Iterator[str]:
         if not self._loaded:

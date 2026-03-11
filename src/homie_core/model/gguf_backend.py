@@ -162,7 +162,7 @@ class GGUFBackend:
         req = Request(f"{self._base_url}/v1/chat/completions", data=data, method="POST")
         req.add_header("Content-Type", "application/json")
 
-        with urlopen(req, timeout=300) as resp:
+        with urlopen(req, timeout=120) as resp:
             result = json.loads(resp.read())
             msg = result["choices"][0]["message"]
             content = msg.get("content", "") or ""
