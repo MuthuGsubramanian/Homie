@@ -16,6 +16,7 @@ from homie_core.memory.episodic import EpisodicMemory
 from homie_core.memory.semantic import SemanticMemory
 from homie_core.brain.cognitive_arch import CognitiveArchitecture
 from homie_core.brain.tool_registry import ToolRegistry
+from homie_core.rag.pipeline import RagPipeline
 
 
 # Rough token estimate: ~4 chars per token
@@ -33,6 +34,7 @@ class BrainOrchestrator:
         episodic_memory: Optional[EpisodicMemory] = None,
         semantic_memory: Optional[SemanticMemory] = None,
         tool_registry: Optional[ToolRegistry] = None,
+        rag_pipeline: Optional[RagPipeline] = None,
     ):
         self._engine = model_engine
         self._wm = working_memory
@@ -40,7 +42,7 @@ class BrainOrchestrator:
         self._sm = semantic_memory
         self._system_prompt = "You are Homie, a helpful local AI assistant. Be concise and direct."
 
-        # Wire up the cognitive architecture with tools + learning
+        # Wire up the cognitive architecture with tools + learning + RAG
         self._cognitive = CognitiveArchitecture(
             model_engine=model_engine,
             working_memory=working_memory,
@@ -48,6 +50,7 @@ class BrainOrchestrator:
             semantic_memory=semantic_memory,
             system_prompt=self._system_prompt,
             tool_registry=tool_registry,
+            rag_pipeline=rag_pipeline,
         )
 
     def process(self, user_input: str) -> str:

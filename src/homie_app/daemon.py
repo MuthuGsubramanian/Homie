@@ -19,6 +19,7 @@ from homie_core.intelligence.flow_detector import FlowDetector
 from homie_core.intelligence.workflow_predictor import WorkflowPredictor
 from homie_core.memory.working import WorkingMemory
 from homie_core.brain.orchestrator import BrainOrchestrator
+from homie_core.rag.pipeline import RagPipeline
 from homie_app.hotkey import HotkeyListener
 from homie_app.overlay import OverlayPopup
 from homie_app.prompts.system import SYSTEM_PROMPT
@@ -82,6 +83,9 @@ class HomieDaemon:
         self._neural_consolidator = None
         self._flow_detector = FlowDetector()
         self._workflow_predictor = WorkflowPredictor(order=2, smoothing_k=1.0)
+
+        # RAG pipeline for document search
+        self._rag = RagPipeline()
         self._rhythm_model = None
         self._behavioral_profile = None
         self._preference_engine = None
@@ -236,12 +240,14 @@ class HomieDaemon:
             register_builtin_tools(
                 registry=tool_registry,
                 working_memory=self._working_memory,
+                rag_pipeline=self._rag,
             )
 
             self._brain = BrainOrchestrator(
                 model_engine=self._engine,
                 working_memory=self._working_memory,
                 tool_registry=tool_registry,
+                rag_pipeline=self._rag,
             )
             self._brain.set_system_prompt(SYSTEM_PROMPT)
         return True

@@ -26,6 +26,7 @@ def register_builtin_tools(
     episodic_memory=None,
     plugin_manager=None,
     storage_path: Optional[str] = None,
+    rag_pipeline=None,
 ) -> None:
     """Register all built-in tools with the registry."""
 
@@ -309,6 +310,84 @@ def register_builtin_tools(
         execute=tool_user_context,
         category="context",
     ))
+
+    # ===================================================================
+    # RAG / DOCUMENT SEARCH TOOLS
+    # ===================================================================
+
+    if rag_pipeline:
+        def tool_search_docs(query: str, top_k: int = 5, file_filter: str = "") -> str:
+            """Search indexed documents using hybrid BM25 + vector search."""
+            try:
+                contexts = rag_pipeline.retrieve(
+                    query, top_k=int(top_k), max_chars=3000,
+                    file_filter=file_filter if file_filter else None,
+                )
+                if not contexts:
+                    return f"No documents matching '{query}' found. Try indexing a directory first."
+                lines = [f"Found {len(contexts)} relevant sections:"]
+                for ctx in contexts:
+                    lines.append(ctx.to_attributed_text())
+                    lines.append("")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"Document search error: {e}"
+
+        registry.register(Tool(
+            name="search_docs",
+            description="Search indexed documents and code using semantic + keyword search. More powerful than search_files — finds content by meaning, not just filename.",
+            params=[
+                ToolParam(name="query", description="What to search for", type="string"),
+                ToolParam(name="top_k", description="Max results", type="int", required=False, default=5),
+                ToolParam(name="file_filter", description="Glob filter for file paths (e.g. '*.py')", type="string", required=False, default=""),
+            ],
+            execute=tool_search_docs,
+            category="documents",
+        ))
+
+        def tool_index_directory(directory: str) -> str:
+            """Index a directory for document search."""
+            dir_path = Path(directory)
+            if not dir_path.exists():
+                return f"Directory not found: {directory}"
+            if not dir_path.is_dir():
+                return f"Not a directory: {directory}"
+            try:
+                count = rag_pipeline.index_directory(dir_path)
+                stats = rag_pipeline.get_stats()
+                return (
+                    f"Indexed {count} new chunks from {directory}\n"
+                    f"Total: {stats['total_chunks']} chunks across {stats['indexed_files']} files"
+                )
+            except Exception as e:
+                return f"Indexing error: {e}"
+
+        registry.register(Tool(
+            name="index_directory",
+            description="Index a directory so its files become searchable via search_docs. Use when the user wants you to learn about their codebase or documents.",
+            params=[
+                ToolParam(name="directory", description="Path to directory to index", type="string"),
+            ],
+            execute=tool_index_directory,
+            category="documents",
+        ))
+
+        def tool_index_stats() -> str:
+            """Get RAG indexing statistics."""
+            stats = rag_pipeline.get_stats()
+            return (
+                f"Indexed files: {stats['indexed_files']}\n"
+                f"Total chunks: {stats['total_chunks']}\n"
+                f"Indexed directories: {', '.join(stats['indexed_dirs']) or 'none'}"
+            )
+
+        registry.register(Tool(
+            name="index_stats",
+            description="Show statistics about indexed documents — how many files and chunks are searchable.",
+            params=[],
+            execute=tool_index_stats,
+            category="documents",
+        ))
 
     # ===================================================================
     # PLUGIN BRIDGE
