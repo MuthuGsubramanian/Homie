@@ -32,6 +32,7 @@ from homie_core.intelligence.self_reflection import SelfReflection
 from homie_core.brain.tool_registry import ToolRegistry, parse_tool_calls
 from homie_core.brain.agentic_loop import AgenticLoop, _strip_tool_markers
 from homie_core.memory.learning_pipeline import LearningPipeline
+from homie_core.rag.pipeline import RagPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +256,7 @@ class CognitiveArchitecture:
         self_reflection: Optional[SelfReflection] = None,
         system_prompt: str = "",
         tool_registry: Optional[ToolRegistry] = None,
+        rag_pipeline: Optional[RagPipeline] = None,
     ):
         self._engine = model_engine
         self._wm = working_memory
@@ -263,6 +265,7 @@ class CognitiveArchitecture:
         self._reflection = self_reflection or SelfReflection()
         self._system_prompt = system_prompt
         self._tools = tool_registry
+        self._rag = rag_pipeline
         self._agentic = AgenticLoop(model_engine, tool_registry) if tool_registry else None
         self._learning = LearningPipeline(
             semantic_memory=semantic_memory,
@@ -357,6 +360,18 @@ class CognitiveArchitecture:
         except Exception:
             return []
 
+    def _retrieve_documents(self, query: str, budget: int, top_k: int = 5) -> str:
+        """Retrieve relevant document chunks via RAG pipeline.
+
+        Returns a formatted [DOCUMENTS] block for prompt injection.
+        """
+        if not self._rag:
+            return ""
+        try:
+            return self._rag.build_context_block(query, max_chars=budget, top_k=top_k)
+        except Exception:
+            return ""
+
     # ------------------------------------------------------------------
     # Stage 4: REASON — build an intelligent, structured prompt
     # ------------------------------------------------------------------
@@ -368,6 +383,7 @@ class CognitiveArchitecture:
         awareness: SituationalAwareness,
         facts: list[dict],
         episodes: list[dict],
+        documents_block: str = "",
     ) -> str:
         """Build a rich, structured prompt using all available intelligence.
 
@@ -422,7 +438,14 @@ class CognitiveArchitecture:
                     parts.append(memory)
                     used += len(memory)
 
-        # 5. Conversation history (adaptive depth)
+        # 5. Retrieved documents (moderate+ queries with RAG)
+        if complexity in (QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+            if documents_block:
+                if used + len(documents_block) < max_chars - len(query) - 100:
+                    parts.append(f"\n{documents_block}")
+                    used += len(documents_block)
+
+        # 6. Conversation history (adaptive depth)
         conversation = self._wm.get_conversation()
         if len(conversation) > 1:
             # More turns for complex queries
@@ -540,7 +563,12 @@ class CognitiveArchitecture:
         facts = self._retrieve_relevant_facts(user_input, budget=budget_cfg["prompt_chars"] // 4)
         episodes = self._retrieve_relevant_episodes(user_input, budget=budget_cfg["prompt_chars"] // 6)
 
-        prompt = self._build_cognitive_prompt(user_input, complexity, awareness, facts, episodes)
+        # RAG: retrieve relevant documents for moderate+ queries
+        documents_block = ""
+        if complexity in (QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+            documents_block = self._retrieve_documents(user_input, budget=budget_cfg["prompt_chars"] // 3)
+
+        prompt = self._build_cognitive_prompt(user_input, complexity, awareness, facts, episodes, documents_block)
 
         # Inject tool descriptions if tools are available
         if self._tools:
