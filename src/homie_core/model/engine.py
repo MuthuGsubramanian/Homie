@@ -31,6 +31,14 @@ class ModelEngine:
             backend = TransformersBackend()
             backend.load(entry.path)
             self._backend = backend
+        elif entry.format == "hf":
+            from homie_core.model.hf_backend import HFBackend
+            backend = HFBackend()
+            backend.load(
+                model_id=entry.path,
+                api_key=kwargs.get("api_key", ""),
+            )
+            self._backend = backend
         elif entry.format == "cloud":
             from homie_core.model.cloud_backend import CloudBackend
             backend = CloudBackend()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ def create_parser() -> argparse.ArgumentParser:
     add = model_sub.add_parser("add", help="Register a local model file")
     add.add_argument("path", type=str)
     add.add_argument("--name", type=str, required=True)
-    add.add_argument("--format", type=str, default="gguf", choices=["gguf", "safetensors", "cloud"])
+    add.add_argument("--format", type=str, default="gguf", choices=["gguf", "safetensors", "cloud", "hf"])
     add.add_argument("--params", type=str, default="unknown")
     rm = model_sub.add_parser("remove", help="Remove a model")
     rm.add_argument("name", type=str)
@@ -64,7 +65,15 @@ def create_parser() -> argparse.ArgumentParser:
 
 def _validate_model_entry(entry, cfg) -> str | None:
     """Check if a model entry is actually usable. Returns error message or None."""
-    if entry.format == "cloud":
+    if entry.format == "hf":
+        api_key = cfg.llm.api_key or os.environ.get("HF_KEY", "")
+        if not api_key:
+            return (
+                f"HF model '{entry.name}' requires an API key.\n"
+                f"  Set it via: HF_KEY env var, or re-run 'homie init'."
+            )
+        return None
+    elif entry.format == "cloud":
         if not cfg.llm.api_key:
             return (
                 f"Cloud model '{entry.name}' requires an API key.\n"
@@ -140,7 +149,12 @@ def _load_model_engine(cfg):
         return None, None
 
     try:
-        if entry.format == "cloud":
+        if entry.format == "hf":
+            print(f"  Connecting to HF Inference API: {entry.path}")
+            api_key = cfg.llm.api_key or os.environ.get("HF_KEY", "")
+            engine.load(entry, api_key=api_key)
+            print(f"  Connected to Hugging Face!")
+        elif entry.format == "cloud":
             print(f"  Connecting to cloud API: {entry.path}")
             print(f"  Endpoint: {cfg.llm.api_base_url}")
             engine.load(entry, api_key=cfg.llm.api_key, base_url=cfg.llm.api_base_url)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import sys
 from pathlib import Path
@@ -14,6 +15,8 @@ from homie_core.intelligence.session_tracker import SessionTracker
 from homie_core.intelligence.briefing import BriefingGenerator
 from homie_core.intelligence.observer_loop import ObserverLoop
 from homie_core.intelligence.audit_log import AuditLogger
+from homie_core.intelligence.flow_detector import FlowDetector
+from homie_core.intelligence.workflow_predictor import WorkflowPredictor
 from homie_core.memory.working import WorkingMemory
 from homie_core.brain.orchestrator import BrainOrchestrator
 from homie_app.hotkey import HotkeyListener
@@ -22,12 +25,17 @@ from homie_app.prompts.system import SYSTEM_PROMPT
 
 
 class HomieDaemon:
-    """Always-active background daemon.
+    """Always-active background daemon with full neural intelligence.
 
-    Three threads:
+    Threads:
     1. Main — hotkey listener + overlay UI
-    2. Observer — watches OS events, feeds task graph
+    2. Observer — watches OS events, feeds neural components + task graph
     3. Scheduler — morning briefing, end-of-day, memory consolidation
+
+    When HF_KEY is present, activates:
+    - HF Inference API for chat (streaming)
+    - HF Embeddings for neural perception (activity classification,
+      semantic context tracking, sentiment analysis, memory consolidation)
     """
 
     def __init__(self, config_path: Optional[str] = None):
@@ -57,7 +65,7 @@ class HomieDaemon:
         # Session tracker
         self._session_tracker = SessionTracker(storage_dir=storage / "sessions")
 
-        # Proactive retrieval (memories injected later when model loads)
+        # Proactive retrieval
         self._retrieval = ProactiveRetrieval()
 
         # Briefing generator
@@ -66,14 +74,36 @@ class HomieDaemon:
             user_name=self._config.user_name,
         )
 
-        # Observer loop
+        # Neural components (initialized if HF_KEY available)
+        self._embeddings = None
+        self._context_engine = None
+        self._activity_classifier = None
+        self._sentiment_analyzer = None
+        self._neural_consolidator = None
+        self._flow_detector = FlowDetector()
+        self._workflow_predictor = WorkflowPredictor(order=2, smoothing_k=1.0)
+        self._rhythm_model = None
+        self._behavioral_profile = None
+        self._preference_engine = None
+
+        # Try to initialize neural components with HF embeddings
+        self._init_neural_components()
+
+        # Observer loop — with neural components if available
         self._observer = ObserverLoop(
             working_memory=self._working_memory,
             task_graph=self._task_graph,
             on_context_change=self._retrieval.on_context_change,
+            context_engine=self._context_engine,
+            activity_classifier=self._activity_classifier,
+            rhythm_model=self._rhythm_model,
+            behavioral_profile=self._behavioral_profile,
+            preference_engine=self._preference_engine,
+            workflow_predictor=self._workflow_predictor,
+            flow_detector=self._flow_detector,
         )
 
-        # UI components (created but not started)
+        # UI components
         self._overlay = OverlayPopup(
             on_submit=self._on_user_query,
             on_submit_stream=self._on_user_query_stream,
@@ -84,17 +114,112 @@ class HomieDaemon:
         self._engine = None
         self._brain: Optional[BrainOrchestrator] = None
 
+    def _init_neural_components(self) -> None:
+        """Initialize neural perception if HF_KEY is available.
+
+        This activates:
+        - SemanticContextEngine (tracks what user is doing via embeddings)
+        - ActivityClassifier (classifies activity into 9 categories)
+        - SentimentAnalyzer (detects user mood/stress)
+        - NeuralConsolidator (clusters episodic memories)
+        - CircadianRhythmModel (Fourier-based productivity curves)
+        - BehavioralProfile (PCA fingerprint of user patterns)
+        - PreferenceEngine (EMA + CUSUM preference tracking)
+        """
+        hf_key = os.environ.get("HF_KEY", "") or self._config.llm.api_key
+        if not hf_key:
+            print("  Neural: offline (no HF_KEY — set it for full intelligence)")
+            return
+
+        try:
+            from homie_core.model.hf_backend import HFEmbeddings
+            self._embeddings = HFEmbeddings(api_key=hf_key)
+            self._embeddings.connect()
+            embed_fn = self._embeddings.embed
+            embed_dim = self._embeddings.dimension
+            print(f"  Neural: HF embeddings connected (dim={embed_dim})")
+        except Exception as e:
+            print(f"  Neural: HF embeddings failed ({e}) — running without")
+            return
+
+        # Now wire up all neural components with the real embed_fn
+        try:
+            from homie_core.neural.context_engine import SemanticContextEngine
+            self._context_engine = SemanticContextEngine(
+                embed_fn=embed_fn, embed_dim=embed_dim,
+            )
+            print("  Neural: SemanticContextEngine active")
+        except Exception as e:
+            print(f"  Neural: context engine failed ({e})")
+
+        try:
+            from homie_core.neural.activity_classifier import ActivityClassifier
+            self._activity_classifier = ActivityClassifier(
+                embed_fn=embed_fn, embed_dim=embed_dim,
+            )
+            # Pre-compute prototype embeddings
+            self._activity_classifier._init_prototypes()
+            print("  Neural: ActivityClassifier active (9 categories)")
+        except Exception as e:
+            print(f"  Neural: activity classifier failed ({e})")
+
+        try:
+            from homie_core.neural.sentiment import SentimentAnalyzer
+            self._sentiment_analyzer = SentimentAnalyzer(embed_fn=embed_fn)
+            print("  Neural: SentimentAnalyzer active")
+        except Exception as e:
+            print(f"  Neural: sentiment analyzer failed ({e})")
+
+        try:
+            from homie_core.neural.consolidator import NeuralConsolidator
+            self._neural_consolidator = NeuralConsolidator(
+                embed_fn=embed_fn, similarity_threshold=0.7,
+            )
+            print("  Neural: NeuralConsolidator active")
+        except Exception as e:
+            print(f"  Neural: consolidator failed ({e})")
+
+        try:
+            from homie_core.neural.rhythm_model import CircadianRhythmModel
+            self._rhythm_model = CircadianRhythmModel()
+            print("  Neural: CircadianRhythmModel active")
+        except Exception as e:
+            print(f"  Neural: rhythm model failed ({e})")
+
+        try:
+            from homie_core.neural.behavioral_profile import BehavioralProfile
+            self._behavioral_profile = BehavioralProfile(embed_dim=embed_dim)
+            print("  Neural: BehavioralProfile active")
+        except Exception as e:
+            print(f"  Neural: behavioral profile failed ({e})")
+
+        try:
+            from homie_core.neural.preference_engine import PreferenceEngine
+            self._preference_engine = PreferenceEngine()
+            print("  Neural: PreferenceEngine active")
+        except Exception as e:
+            print(f"  Neural: preference engine failed ({e})")
+
     def _on_hotkey(self) -> None:
         self._overlay.toggle()
 
     def _inject_proactive_context(self) -> None:
-        """Feed proactive retrieval results into working memory for the cognitive arch."""
+        """Feed proactive retrieval + sentiment into working memory."""
         staged = self._retrieval.consume_staged_context()
         if staged.get("facts"):
-            # Store as semantic signals so cognitive arch can TF-IDF score them
             self._working_memory.update("staged_facts", staged["facts"][:5])
         if staged.get("episodes"):
             self._working_memory.update("staged_episodes", staged["episodes"][:3])
+
+    def _analyze_sentiment(self, text: str) -> None:
+        """Run sentiment analysis on user input and update working memory."""
+        if self._sentiment_analyzer:
+            try:
+                result = self._sentiment_analyzer.analyze(text)
+                self._working_memory.update("sentiment", result.sentiment)
+                self._working_memory.update("arousal", result.arousal)
+            except Exception:
+                pass
 
     def _ensure_brain(self) -> bool:
         """Ensure model + brain are loaded. Returns True if ready."""
@@ -115,6 +240,7 @@ class HomieDaemon:
             return "Model not available. Run 'homie init' to set up."
 
         self._inject_proactive_context()
+        self._analyze_sentiment(text)
         try:
             response = self._brain.process(text)
             self._audit.log_query(prompt=text, response=response,
@@ -132,6 +258,7 @@ class HomieDaemon:
             return
 
         self._inject_proactive_context()
+        self._analyze_sentiment(text)
         chunks = []
         try:
             for token in self._brain.process_stream(text):
@@ -160,12 +287,16 @@ class HomieDaemon:
                     name=self._config.llm.model_path,
                     path=self._config.llm.model_path,
                     format=self._config.llm.backend,
-                    params="cloud" if self._config.llm.backend == "cloud" else "unknown",
+                    params="hf" if self._config.llm.backend == "hf" else (
+                        "cloud" if self._config.llm.backend == "cloud" else "unknown"
+                    ),
                 )
 
             if entry:
                 kwargs = {}
-                if entry.format == "cloud":
+                if entry.format == "hf":
+                    kwargs["api_key"] = self._config.llm.api_key or os.environ.get("HF_KEY", "")
+                elif entry.format == "cloud":
                     kwargs["api_key"] = self._config.llm.api_key
                     kwargs["base_url"] = self._config.llm.api_base_url or "https://api.openai.com/v1"
                 else:
@@ -184,9 +315,10 @@ class HomieDaemon:
         briefing = self._briefing.morning_briefing()
         print(f"\n{briefing}\n")
 
-        # Start observer thread
+        # Start observer thread (with neural components if available)
         self._observer.start()
-        print("  Observer: running")
+        neural_status = "with neural perception" if self._context_engine else "basic"
+        print(f"  Observer: running ({neural_status})")
 
         # Start hotkey listener
         self._hotkey.start()
