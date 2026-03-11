@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from homie_core.neural.preference_engine import PreferenceEngine
     from homie_core.intelligence.workflow_predictor import WorkflowPredictor
     from homie_core.intelligence.flow_detector import FlowDetector
+    from homie_core.intelligence.proactive_engine import ProactiveEngine
 
 
 class ObserverLoop:
@@ -39,6 +40,7 @@ class ObserverLoop:
         preference_engine: Optional[PreferenceEngine] = None,
         workflow_predictor: Optional[WorkflowPredictor] = None,
         flow_detector: Optional[FlowDetector] = None,
+        proactive_engine: Optional[ProactiveEngine] = None,
     ):
         self._wm = working_memory
         self._tg = task_graph
@@ -54,9 +56,11 @@ class ObserverLoop:
         self._prefs = preference_engine
         self._workflow = workflow_predictor
         self._flow = flow_detector
+        self._proactive = proactive_engine
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._last_window: Optional[WindowInfo] = None
+        self._poll_count: int = 0
 
     def _handle_window_change(self, window: WindowInfo) -> None:
         if (self._last_window and
@@ -171,6 +175,11 @@ class ObserverLoop:
 
                 # Refresh task duration every poll cycle (not just on window change)
                 self._update_task_duration()
+
+                # Proactive suggestions — the engine manages its own timer
+                # internally so calling tick() every poll cycle is safe.
+                if self._proactive:
+                    self._proactive.tick()
             except Exception:
                 pass
 
@@ -178,6 +187,7 @@ class ObserverLoop:
             if elapsed > self._poll_interval * self._cpu_budget:
                 self._poll_interval = min(self._poll_interval * 1.5, 10.0)
 
+            self._poll_count += 1
             time.sleep(self._poll_interval)
 
     def start(self) -> None:
