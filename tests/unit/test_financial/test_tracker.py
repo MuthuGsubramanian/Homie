@@ -4,7 +4,8 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock
 
-from homie_core.financial.tracker import BillTracker, _parse_amount
+from homie_core.financial.tracker import BillTracker
+from homie_core.financial.models import parse_amount
 from homie_core.vault.models import FinancialRecord
 
 
@@ -22,16 +23,16 @@ def _make_record(**overrides) -> FinancialRecord:
 
 class TestParseAmount:
     def test_valid(self):
-        assert _parse_amount("142.50") == 142.50
+        assert parse_amount("142.50") == 142.50
 
     def test_with_commas(self):
-        assert _parse_amount("1,250.00") == 1250.0
+        assert parse_amount("1,250.00") == 1250.0
 
     def test_none(self):
-        assert _parse_amount(None) is None
+        assert parse_amount(None) is None
 
     def test_invalid(self):
-        assert _parse_amount("N/A") is None
+        assert parse_amount("N/A") is None
 
 
 class TestPendingBills:

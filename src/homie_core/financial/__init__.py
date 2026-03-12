@@ -52,6 +52,9 @@ class FinancialService:
 
     def mark_paid(self, record_id: int) -> dict:
         """Mark a bill as paid."""
+        records = self._vault.query_financial()
+        if not any(r.id == record_id for r in records):
+            return {"error": f"Record {record_id} not found"}
         self._vault.update_financial(record_id, status="paid")
         return {"id": record_id, "status": "paid"}
 
