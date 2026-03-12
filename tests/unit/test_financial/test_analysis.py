@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from homie_core.financial.analysis import SpendingAnalysis, _parse_amount
+from homie_core.financial.analysis import SpendingAnalysis
 from homie_core.vault.models import FinancialRecord
 
 

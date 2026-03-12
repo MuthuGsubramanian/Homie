@@ -5,17 +5,8 @@ import calendar
 import time
 from datetime import datetime
 
-from homie_core.financial.models import SpendingSummary, TrendResult
+from homie_core.financial.models import SpendingSummary, TrendResult, parse_amount
 from homie_core.vault.models import FinancialRecord
-
-
-def _parse_amount(amount: str | None) -> float | None:
-    if not amount:
-        return None
-    try:
-        return float(amount.replace(",", ""))
-    except (ValueError, TypeError):
-        return None
 
 
 class SpendingAnalysis:
@@ -34,7 +25,7 @@ class SpendingAnalysis:
         by_currency: dict[str, dict[str, float]] = {}
         counts: dict[str, int] = {}
         for r in records:
-            amt = _parse_amount(r.amount)
+            amt = parse_amount(r.amount)
             if amt is None:
                 continue
             cur = r.currency or "USD"
@@ -56,7 +47,7 @@ class SpendingAnalysis:
             ))
         return summaries
 
-    def trend(self, months: int = 2) -> list[TrendResult]:
+    def trend(self) -> list[TrendResult]:
         """Compare current month vs previous. One TrendResult per currency."""
         now = datetime.now()
         curr_year, curr_month = now.year, now.month
@@ -99,7 +90,7 @@ class SpendingAnalysis:
         all_records = self._vault.query_financial()
         with_amounts = []
         for r in all_records:
-            amt = _parse_amount(r.amount)
+            amt = parse_amount(r.amount)
             if amt is not None:
                 with_amounts.append((r, amt))
         with_amounts.sort(key=lambda x: x[1], reverse=True)

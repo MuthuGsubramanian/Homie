@@ -4,18 +4,8 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from homie_core.financial.models import BillGroup
+from homie_core.financial.models import BillGroup, parse_amount
 from homie_core.vault.models import FinancialRecord
-
-
-def _parse_amount(amount: str | None) -> float | None:
-    """Safely parse amount string to float."""
-    if not amount:
-        return None
-    try:
-        return float(amount.replace(",", ""))
-    except (ValueError, TypeError):
-        return None
 
 
 class BillTracker:
@@ -54,7 +44,7 @@ class BillTracker:
         for desc, recs in groups.items():
             if len(recs) < 2:
                 continue
-            amounts = [_parse_amount(r.amount) for r in recs]
+            amounts = [parse_amount(r.amount) for r in recs]
             valid_amounts = [a for a in amounts if a is not None]
             if not valid_amounts:
                 continue

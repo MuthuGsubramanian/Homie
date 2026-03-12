@@ -4,6 +4,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def parse_amount(amount: str | None) -> float | None:
+    """Safely parse amount string to float."""
+    if not amount:
+        return None
+    try:
+        return float(amount.replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
 @dataclass
 class SpendingSummary:
     period: str
