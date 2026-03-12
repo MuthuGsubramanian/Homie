@@ -322,6 +322,7 @@ class TestResponseGuidance:
         engine.generate.return_value = "response"
         wm = WorkingMemory()
         wm.update("activity_type", "coding")
+        wm.update("activity_confidence", 0.8)
         wm.update("flow_score", 0.8)
         arch = CognitiveArchitecture(
             model_engine=engine, working_memory=wm, system_prompt="Test",

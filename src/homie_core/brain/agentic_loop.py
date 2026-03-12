@@ -15,9 +15,11 @@ reason, act, observe results, self-correct, and reason again.
 from __future__ import annotations
 
 import re
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 from homie_core.brain.tool_registry import ToolRegistry, ToolResult, parse_tool_calls
+from homie_core.brain.iteration_budget import IterationBudget
+from homie_core.security.redact import redact_sensitive_text
 
 
 # Strip tool call markers from final output shown to user
@@ -44,15 +46,18 @@ def _strip_tool_markers(text: str) -> str:
 def _format_tool_results(results: list[ToolResult]) -> tuple[str, bool]:
     """Format tool results as context for the next generation round.
 
+    Applies secret redaction to prevent credential leaks in tool output.
     Returns (formatted_text, has_errors).
     """
     parts = []
     has_errors = False
     for r in results:
         if r.success:
-            parts.append(f"[Tool: {r.tool_name}] Result: {r.output}")
+            safe_output = redact_sensitive_text(r.output)
+            parts.append(f"[Tool: {r.tool_name}] Result: {safe_output}")
         else:
-            parts.append(f"[Tool: {r.tool_name}] Error: {r.error}")
+            safe_error = redact_sensitive_text(r.error or "")
+            parts.append(f"[Tool: {r.tool_name}] Error: {safe_error}")
             has_errors = True
     return "\n".join(parts), has_errors
 
@@ -71,10 +76,12 @@ class AgenticLoop:
         model_engine,
         tool_registry: ToolRegistry,
         max_iterations: int = _MAX_ITERATIONS,
+        budget: Optional[IterationBudget] = None,
     ):
         self._engine = model_engine
         self._tools = tool_registry
         self._max_iterations = max_iterations
+        self._budget = budget or IterationBudget(max_iterations=max_iterations)
 
     def process(
         self,
@@ -89,8 +96,14 @@ class AgenticLoop:
         current_prompt = prompt
         all_text_parts = []
         consecutive_errors = 0
+        self._budget.reset()
 
         for iteration in range(self._max_iterations):
+            if not self._budget.consume():
+                all_text_parts.append(
+                    "(Iteration budget exhausted. Here's what I have so far.)"
+                )
+                break
             # Generate
             response = self._engine.generate(
                 current_prompt, max_tokens=max_tokens, temperature=temperature,
@@ -164,6 +177,9 @@ class AgenticLoop:
         consecutive_errors = 0
 
         for iteration in range(self._max_iterations):
+            if not self._budget.consume():
+                yield "\n(Iteration budget exhausted.)\n"
+                break
             # Stream tokens, accumulating for tool call detection
             accumulated = []
             yielded_count = 0  # Track how many tokens we've already yielded

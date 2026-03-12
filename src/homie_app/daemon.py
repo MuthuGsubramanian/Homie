@@ -21,6 +21,8 @@ from homie_core.intelligence.proactive_engine import ProactiveEngine
 from homie_core.memory.working import WorkingMemory
 from homie_core.brain.orchestrator import BrainOrchestrator
 from homie_core.rag.pipeline import RagPipeline
+from homie_core.scheduler.cron import Scheduler, JobStore, Job
+from homie_core.skills.loader import SkillLoader
 from homie_app.hotkey import HotkeyListener
 from homie_app.overlay import OverlayPopup
 from homie_app.prompts.system import build_system_prompt
@@ -90,6 +92,17 @@ class HomieDaemon:
         self._rhythm_model = None
         self._behavioral_profile = None
         self._preference_engine = None
+
+        # Scheduler for recurring tasks
+        scheduler_dir = storage / "scheduler"
+        self._job_store = JobStore(path=scheduler_dir / "jobs.json")
+        self._scheduler = Scheduler(
+            job_store=self._job_store,
+            on_job_due=self._execute_scheduled_job,
+        )
+
+        # Skill loader for user-defined skill files
+        self._skill_loader = SkillLoader()
 
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
@@ -211,6 +224,15 @@ class HomieDaemon:
             print("  Neural: PreferenceEngine active")
         except Exception as e:
             print(f"  Neural: preference engine failed ({e})")
+
+    def _execute_scheduled_job(self, job: Job) -> str:
+        """Callback for the scheduler — processes a due job's prompt."""
+        if not self._ensure_brain():
+            return "Model not available for scheduled task."
+        try:
+            return self._brain.process(job.prompt)
+        except Exception as e:
+            return f"Scheduled task error: {e}"
 
     def _on_hotkey(self) -> None:
         self._overlay.toggle()
@@ -353,15 +375,35 @@ class HomieDaemon:
         self._hotkey.start()
         print("  Hotkey (Alt+8): active")
 
+        # Load skills index
+        skills = self._skill_loader.scan()
+        if skills:
+            print(f"  Skills: {len(skills)} loaded from ~/.homie/skills/")
+
+        # Show pending scheduled jobs
+        pending = self._job_store.list_jobs()
+        if pending:
+            print(f"  Scheduler: {len(pending)} jobs registered")
+
         print("\nHomie is running in the background. Press Alt+8 or say 'hey homie' to activate.")
         print("Press Ctrl+C to stop.\n")
 
-        # Main thread waits
+        # Main thread waits — ticks scheduler every 60s
         try:
             signal.signal(signal.SIGINT, lambda *_: self.stop())
+            tick_counter = 0
             while self._running:
                 import time
                 time.sleep(1)
+                tick_counter += 1
+                if tick_counter >= 60:
+                    tick_counter = 0
+                    try:
+                        results = self._scheduler.tick()
+                        for job, output in results:
+                            print(f"  [Scheduler] {job.name}: {output[:100]}")
+                    except Exception:
+                        pass
         except KeyboardInterrupt:
             self.stop()
 

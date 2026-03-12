@@ -60,6 +60,26 @@ def create_parser() -> argparse.ArgumentParser:
     daemon_parser = subparsers.add_parser("daemon", help="Run as always-active background daemon")
     daemon_parser.add_argument("--config", type=str, help="Path to config file")
 
+    # homie insights
+    insights_parser = subparsers.add_parser("insights", help="Show usage analytics and stats")
+    insights_parser.add_argument("--days", type=int, default=30, help="Number of days to analyze")
+    insights_parser.add_argument("--compact", action="store_true", help="Show compact summary")
+
+    # homie schedule
+    schedule_parser = subparsers.add_parser("schedule", help="Manage scheduled tasks")
+    schedule_sub = schedule_parser.add_subparsers(dest="schedule_command")
+    schedule_sub.add_parser("list", help="List scheduled jobs")
+    sched_add = schedule_sub.add_parser("add", help="Add a scheduled job")
+    sched_add.add_argument("name", type=str, help="Job name")
+    sched_add.add_argument("schedule", type=str, help="Schedule: '30m', 'every 2h', '0 9 * * *', 'daily'")
+    sched_add.add_argument("prompt", type=str, help="What Homie should do")
+    sched_add.add_argument("--max-repeats", type=int, default=None, help="Max repetitions (None=infinite)")
+    sched_rm = schedule_sub.add_parser("remove", help="Remove a scheduled job")
+    sched_rm.add_argument("job_id", type=str, help="Job ID to remove")
+
+    # homie skills
+    skills_parser = subparsers.add_parser("skills", help="List available skills")
+
     return parser
 
 
@@ -471,6 +491,38 @@ def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
         wm.clear()
         return "Conversation cleared. Fresh start!"
 
+    if cmd == "/insights":
+        try:
+            from homie_core.analytics.insights import InsightsEngine
+            engine = InsightsEngine(Path(cfg.storage.path).expanduser())
+            insights = engine.generate_insights(days=30)
+            return engine.format_terminal(insights)
+        except Exception as e:
+            return f"Could not generate insights: {e}"
+
+    if cmd.startswith("/schedule "):
+        parts = command[10:].strip().split(maxsplit=2)
+        if len(parts) < 3:
+            return "Usage: /schedule <name> <schedule> <prompt>\n  Example: /schedule remind_break every 2h Take a break and stretch"
+        try:
+            from homie_core.scheduler.cron import JobStore
+            job_store = JobStore()
+            job = job_store.create_job(name=parts[0], prompt=parts[2], schedule=parts[1])
+            return f"Scheduled: '{job.name}' ({parts[1]}) — next run: {job.next_run}"
+        except Exception as e:
+            return f"Could not schedule: {e}"
+
+    if cmd == "/skills":
+        try:
+            from homie_core.skills.loader import SkillLoader
+            loader = SkillLoader()
+            skills = loader.scan()
+            if not skills:
+                return "No skills installed. Drop SKILL.md files into ~/.homie/skills/"
+            return loader.build_skills_index()
+        except Exception as e:
+            return f"Could not load skills: {e}"
+
     if cmd == "/help":
         return (
             "**Homie Commands:**\n"
@@ -479,6 +531,9 @@ def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
             "  /learn     — Show what I learned this session\n"
             "  /remember  — Store a fact (e.g., /remember I prefer dark mode)\n"
             "  /forget    — Forget a topic (e.g., /forget work)\n"
+            "  /insights  — Show usage analytics (sessions, topics, streaks)\n"
+            "  /schedule  — Create scheduled task (e.g., /schedule name every_2h prompt)\n"
+            "  /skills    — List installed skills\n"
             "  /clear     — Clear conversation (fresh start)\n"
             "  /help      — Show this help\n"
             "  quit       — Exit chat"
@@ -698,6 +753,64 @@ def cmd_daemon(args, config=None):
     daemon.start()
 
 
+def cmd_insights(args, config=None):
+    from homie_core.config import load_config
+    from homie_core.analytics.insights import InsightsEngine
+    cfg = config or load_config()
+    engine = InsightsEngine(Path(cfg.storage.path).expanduser())
+    insights = engine.generate_insights(days=args.days)
+    if getattr(args, 'compact', False):
+        print(engine.format_compact(insights))
+    else:
+        print(engine.format_terminal(insights))
+
+
+def cmd_schedule(args, config=None):
+    from homie_core.config import load_config
+    from homie_core.scheduler.cron import JobStore
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path).expanduser()
+    job_store = JobStore(path=storage / "scheduler" / "jobs.json")
+
+    if args.schedule_command == "list":
+        jobs = job_store.list_jobs()
+        if not jobs:
+            print("No scheduled jobs.")
+            return
+        for j in jobs:
+            status = "enabled" if j.enabled else "disabled"
+            print(f"  [{j.id[:8]}] {j.name} ({status})")
+            print(f"    Schedule: {j.schedule}  Next: {j.next_run or 'N/A'}")
+            print(f"    Prompt: {j.prompt[:80]}")
+    elif args.schedule_command == "add":
+        job = job_store.create_job(
+            name=args.name,
+            prompt=args.prompt,
+            schedule=args.schedule,
+            max_repeats=args.max_repeats,
+        )
+        print(f"Created job '{job.name}' (id: {job.id[:8]})")
+        print(f"  Next run: {job.next_run}")
+    elif args.schedule_command == "remove":
+        if job_store.delete_job(args.job_id):
+            print(f"Removed job {args.job_id}")
+        else:
+            print(f"Job not found: {args.job_id}")
+    else:
+        print("Usage: homie schedule {list|add|remove}")
+
+
+def cmd_skills(args, config=None):
+    from homie_core.skills.loader import SkillLoader
+    loader = SkillLoader()
+    skills = loader.scan()
+    if not skills:
+        print("No skills installed.")
+        print("Drop SKILL.md files into ~/.homie/skills/ to add custom skills.")
+        return
+    print(loader.build_skills_index())
+
+
 def main(argv: list[str] | None = None):
     parser = create_parser()
     args = parser.parse_args(argv)
@@ -713,6 +826,9 @@ def main(argv: list[str] | None = None):
         "backup": cmd_backup,
         "restore": cmd_restore,
         "daemon": cmd_daemon,
+        "insights": cmd_insights,
+        "schedule": cmd_schedule,
+        "skills": cmd_skills,
     }
 
     handler = commands.get(args.command)

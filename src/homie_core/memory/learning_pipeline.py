@@ -47,6 +47,17 @@ _PREFERENCE_PATTERNS = [
     re.compile(r"\bi\s+(?:switched|moved|migrated|transitioned)\s+(?:from\s+\w+\s+)?to\s+(.{3,40}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
 ]
 
+# Patterns for detecting project names in conversation
+_PROJECT_PATTERNS = [
+    # "working on project X" / "the X project"
+    re.compile(r"\b(?:working on|building|developing|the)\s+(?:project\s+)?([A-Z][\w-]{2,30})\s+(?:project|app|service|api|tool|system|platform)", re.IGNORECASE),
+    re.compile(r"\bproject\s+([A-Z][\w-]{2,30})\b", re.IGNORECASE),
+    # "for X" at end of technical statement
+    re.compile(r"\b(?:implementing|designing|fixing|adding|updating)\s+.{5,40}\s+(?:for|in)\s+([A-Z][\w-]{2,30})\b"),
+    # "let's continue with X"
+    re.compile(r"\b(?:continue|resume|back to|switch to|work on)\s+([A-Z][\w-]{2,30})\b", re.IGNORECASE),
+]
+
 # Patterns indicating correction/update of existing knowledge
 _CORRECTION_PATTERNS = [
     re.compile(r"\bactually,?\s+(?:i|my)\s+(.{5,80})", re.IGNORECASE),
@@ -88,6 +99,8 @@ class LearningPipeline:
         self._min_confidence = min_confidence
         self._session_facts: list[str] = []
         self._interaction_count = 0
+        self._active_project: Optional[str] = None
+        self._project_history: list[str] = []
 
     def process_user_message(self, text: str) -> list[str]:
         """Extract and store facts from a user message.
@@ -95,6 +108,9 @@ class LearningPipeline:
         Returns list of facts that were learned (for transparency).
         """
         self._interaction_count += 1
+
+        # Detect project context from message
+        self._detect_project(text)
 
         if not self._sm:
             return []
@@ -114,6 +130,11 @@ class LearningPipeline:
             if pattern.match(text):
                 return []
 
+        # Build tags: auto_extracted + project tag if active
+        tags = ["auto_extracted"]
+        if self._active_project:
+            tags.append(f"project:{self._active_project}")
+
         # Extract learnable facts
         learned = []
         for pattern in _PREFERENCE_PATTERNS:
@@ -121,11 +142,64 @@ class LearningPipeline:
             if match:
                 fact = self._format_fact(match, pattern)
                 if fact and not self._already_known(fact):
-                    self._sm.learn(fact, confidence=self._min_confidence, tags=["auto_extracted"])
+                    self._sm.learn(fact, confidence=self._min_confidence, tags=tags)
                     self._session_facts.append(fact)
                     learned.append(fact)
 
         return learned
+
+    def _detect_project(self, text: str) -> None:
+        """Detect and track project names mentioned in conversation."""
+        for pattern in _PROJECT_PATTERNS:
+            match = pattern.search(text)
+            if match:
+                project = match.group(1).strip()
+                # Filter out common false positives
+                if project.lower() in {"the", "this", "that", "my", "our", "your", "some"}:
+                    continue
+                if len(project) < 3:
+                    continue
+                self._active_project = project
+                if project not in self._project_history:
+                    self._project_history.append(project)
+                break
+
+    @property
+    def active_project(self) -> Optional[str]:
+        """Currently detected project context."""
+        return self._active_project
+
+    def recall_project(self, project_name: str) -> dict:
+        """Recall all facts and episodes tagged with a project.
+
+        Returns dict with 'facts' and 'episodes' keys.
+        """
+        result: dict = {"facts": [], "episodes": []}
+
+        if self._sm:
+            try:
+                all_facts = self._sm.get_facts(min_confidence=0.0)
+                tag = f"project:{project_name}"
+                result["facts"] = [
+                    f for f in all_facts
+                    if tag in f.get("tags", [])
+                ]
+            except Exception:
+                pass
+
+        if self._em:
+            try:
+                episodes = self._em.recall(project_name, n=20)
+                result["episodes"] = [
+                    ep for ep in episodes
+                    if project_name.lower() in " ".join(
+                        ep.get("context_tags", [])
+                    ).lower()
+                ]
+            except Exception:
+                pass
+
+        return result
 
     def _handle_correction(self, text: str, match: re.Match) -> list[str]:
         """Handle a correction — try to find and update the contradicted fact."""
@@ -247,6 +321,9 @@ class LearningPipeline:
         if self._em:
             try:
                 context_tags = [activity] + topics[:3]
+                # Add project tags for cross-session continuity
+                for project in self._project_history:
+                    context_tags.append(f"project:{project}")
                 self._em.record(
                     summary=summary,
                     mood=mood or working_memory.get("sentiment", "neutral"),
