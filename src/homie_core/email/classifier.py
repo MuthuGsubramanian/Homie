@@ -6,7 +6,6 @@ Scores are clamped to [0.0, 1.0].
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 
 from homie_core.email.models import EmailMessage
 
@@ -23,7 +22,7 @@ _ACTION_KEYWORDS = {
     "important", "critical", "overdue",
 }
 
-# Social media senders (partial domain match)
+# Social media senders (suffix domain match)
 _SOCIAL_DOMAINS = {
     "linkedin.com", "facebook.com", "twitter.com", "instagram.com",
     "tiktok.com", "reddit.com", "quora.com", "pinterest.com",
@@ -35,6 +34,14 @@ _BILL_PATTERN = re.compile(
     r"(invoice|payment due|amount due|billing|statement|receipt|\$\d+|\€\d+|₹\d+)",
     re.IGNORECASE,
 )
+
+
+def _is_social_domain(domain: str) -> bool:
+    """Check if domain matches a known social media domain (suffix match)."""
+    return any(
+        domain == d or domain.endswith("." + d)
+        for d in _SOCIAL_DOMAINS
+    )
 
 
 def _extract_domain(email_str: str) -> str:
@@ -94,7 +101,7 @@ class EmailClassifier:
         if excessive_punct > 0:
             score += 0.1
 
-        text = (msg.subject + " " + msg.snippet).lower()
+        text = (msg.subject + " " + (msg.snippet or "")).lower()
         spam_hit = any(phrase in text for phrase in _SPAM_PHRASES)
         if spam_hit:
             score += 0.1
@@ -124,12 +131,12 @@ class EmailClassifier:
         headers = headers or {}
         sender_email = _extract_email(msg.sender)
         sender_domain = _extract_domain(msg.sender)
-        text = (msg.subject + " " + msg.snippet).lower()
+        text = (msg.subject + " " + (msg.snippet or "")).lower()
 
         is_known = sender_email in self._reply_history
         has_action = any(kw in text for kw in _ACTION_KEYWORDS)
         is_list = bool(headers.get("List-Unsubscribe"))
-        is_social = any(d in sender_domain for d in _SOCIAL_DOMAINS)
+        is_social = _is_social_domain(sender_domain)
 
         # High: known contact + action words, or same domain + action
         if (is_known and has_action) or (sender_domain == self._user_domain and has_action):
@@ -162,11 +169,11 @@ class EmailClassifier:
             categories.append("work")
 
         # Newsletter
-        if headers.get("List-Unsubscribe") and not any(d in sender_domain for d in _SOCIAL_DOMAINS):
+        if headers.get("List-Unsubscribe") and not _is_social_domain(sender_domain):
             categories.append("newsletter")
 
         # Social
-        if any(d in sender_domain for d in _SOCIAL_DOMAINS):
+        if _is_social_domain(sender_domain):
             categories.append("social")
 
         return categories
