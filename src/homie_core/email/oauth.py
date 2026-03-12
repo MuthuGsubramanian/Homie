@@ -1,0 +1,145 @@
+"""OAuth 2.0 flow for Gmail — local redirect server + manual fallback.
+
+Handles:
+1. Building the authorization URL
+2. Running a local HTTP server to receive the redirect (port 8547)
+3. Manual code entry fallback for headless environments
+4. Code-to-token exchange
+5. Token refresh
+"""
+from __future__ import annotations
+
+import http.server
+import json
+import threading
+import time
+import urllib.parse
+from typing import Any
+
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore[assignment]
+
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.compose",
+]
+
+_GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_REDIRECT_PORT = 8547
+_REDIRECT_URI = f"http://localhost:{_REDIRECT_PORT}/callback"
+_MANUAL_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
+
+
+def build_auth_url(
+    client_id: str,
+    redirect_uri: str = _REDIRECT_URI,
+) -> str:
+    """Build the Google OAuth consent screen URL."""
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(GMAIL_SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    return f"{_GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+
+def exchange_code(
+    code: str,
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str = _REDIRECT_URI,
+) -> dict[str, Any]:
+    """Exchange authorization code for access + refresh tokens."""
+    if requests is None:
+        raise ImportError("requests library required for OAuth")
+
+    resp = requests.post(_GOOGLE_TOKEN_URL, data={
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+class _CallbackHandler(http.server.BaseHTTPRequestHandler):
+    """HTTP handler to capture OAuth redirect callback."""
+
+    auth_code: str | None = None
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+
+        if "code" in params:
+            _CallbackHandler.auth_code = params["code"][0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body><h2>Authorization successful!</h2>"
+                             b"<p>You can close this tab and return to Homie.</p></body></html>")
+        else:
+            error = params.get("error", ["unknown"])[0]
+            self.send_response(400)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(f"<html><body><h2>Error: {error}</h2></body></html>".encode())
+
+    def log_message(self, format, *args):
+        pass  # Suppress server logs
+
+
+class GmailOAuth:
+    """Handles Gmail OAuth 2.0 lifecycle."""
+
+    def __init__(self, client_id: str, client_secret: str):
+        self._client_id = client_id
+        self._client_secret = client_secret
+
+    def get_auth_url(self, use_local_server: bool = True) -> str:
+        """Get the authorization URL."""
+        redirect = _REDIRECT_URI if use_local_server else _MANUAL_REDIRECT_URI
+        return build_auth_url(self._client_id, redirect)
+
+    def wait_for_redirect(self, timeout: int = 120) -> str | None:
+        """Start local server and wait for OAuth redirect. Returns auth code or None."""
+        _CallbackHandler.auth_code = None
+        try:
+            server = http.server.HTTPServer(("localhost", _REDIRECT_PORT), _CallbackHandler)
+        except OSError:
+            return None  # Port unavailable
+
+        server.timeout = timeout
+        thread = threading.Thread(target=server.handle_request, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout + 5)
+        server.server_close()
+        return _CallbackHandler.auth_code
+
+    def exchange(self, code: str, use_local_server: bool = True) -> dict[str, Any]:
+        """Exchange auth code for tokens."""
+        redirect = _REDIRECT_URI if use_local_server else _MANUAL_REDIRECT_URI
+        return exchange_code(code, self._client_id, self._client_secret, redirect)
+
+    def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
+        """Refresh an expired access token."""
+        if requests is None:
+            raise ImportError("requests library required for OAuth")
+
+        resp = requests.post(_GOOGLE_TOKEN_URL, data={
+            "client_id": self._client_id,
+            "client_secret": self._client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
