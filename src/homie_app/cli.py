@@ -182,11 +182,315 @@ def _load_model_engine(cfg):
     return engine, entry
 
 
+def _init_intelligence_stack(cfg):
+    """Initialize the full intelligence stack: memories, plugins, RAG, tools.
+
+    Returns (wm, em, sm, tool_registry, rag, plugin_mgr) with graceful fallbacks.
+    """
+    from homie_core.memory.working import WorkingMemory
+    from homie_core.brain.tool_registry import ToolRegistry
+
+    wm = WorkingMemory()
+    em = None
+    sm = None
+    rag = None
+    plugin_mgr = None
+    tool_registry = ToolRegistry()
+
+    storage_path = Path(cfg.storage.path).expanduser()
+
+    # Initialize database + semantic memory
+    try:
+        from homie_core.storage.database import Database
+        from homie_core.memory.semantic import SemanticMemory
+        db = Database(storage_path / cfg.storage.db_name)
+        db.initialize()
+        sm = SemanticMemory(db)
+        print("  [+] Semantic memory loaded")
+    except Exception as e:
+        print(f"  [-] Semantic memory unavailable: {e}")
+        db = None
+
+    # Initialize vector store + episodic memory
+    try:
+        from homie_core.storage.vectors import VectorStore
+        from homie_core.memory.episodic import EpisodicMemory
+        vs = VectorStore(storage_path / cfg.storage.chroma_dir)
+        vs.initialize()
+        em = EpisodicMemory(db, vs) if db else None
+        if em:
+            print("  [+] Episodic memory loaded")
+
+        # Initialize RAG pipeline with vector store
+        try:
+            from homie_core.rag.pipeline import RagPipeline
+            rag = RagPipeline(vector_store=vs)
+            print("  [+] RAG pipeline ready")
+        except Exception as e:
+            print(f"  [-] RAG unavailable: {e}")
+    except Exception as e:
+        print(f"  [-] Vector store unavailable: {e}")
+
+    # Load plugins and register as tools
+    try:
+        from homie_core.plugins.manager import PluginManager
+        plugin_mgr = PluginManager()
+
+        # Load built-in plugins
+        builtin_dir = Path(__file__).parent / "plugins"
+        if builtin_dir.exists():
+            loaded = plugin_mgr.load_from_directory(builtin_dir)
+            if loaded > 0:
+                print(f"  [+] {loaded} plugins discovered")
+
+        # Enable plugins from config
+        enabled_plugins = getattr(cfg, 'plugins', None)
+        if enabled_plugins and hasattr(enabled_plugins, 'enabled'):
+            for name in enabled_plugins.enabled:
+                if plugin_mgr.enable(name):
+                    print(f"      Enabled: {name}")
+
+        # Register plugin tools with tool registry
+        _register_plugin_tools(plugin_mgr, tool_registry)
+    except Exception as e:
+        print(f"  [-] Plugin system unavailable: {e}")
+
+    # Register comprehensive built-in tools (memory, system, files, git, clipboard, etc.)
+    try:
+        from homie_core.brain.builtin_tools import register_builtin_tools
+        register_builtin_tools(
+            registry=tool_registry,
+            working_memory=wm,
+            semantic_memory=sm,
+            episodic_memory=em,
+            plugin_manager=plugin_mgr,
+            storage_path=str(storage_path),
+            rag_pipeline=rag,
+        )
+        tool_count = len(tool_registry.list_tools())
+        print(f"  [+] {tool_count} tools registered")
+    except Exception as e:
+        print(f"  [-] Built-in tools unavailable: {e}")
+        # Fall back to meta-tools only
+        _register_meta_tools(tool_registry, sm, em, wm)
+
+    return wm, em, sm, tool_registry, rag, plugin_mgr
+
+
+def _register_plugin_tools(plugin_mgr, tool_registry):
+    """Convert plugins into callable tools for the agentic loop.
+
+    Creates query-based tools from each plugin's known intents.
+    Plugins are auto-enabled for tool registration.
+    """
+    from homie_core.brain.tool_registry import Tool, ToolParam
+    import json
+
+    # Known plugin intents (maps plugin name → {intent: description})
+    _PLUGIN_INTENTS = {
+        "git": {
+            "status": "Get current git status (changed/staged files)",
+            "log": "Get recent git commit log",
+            "branch": "Get current git branch name",
+            "diff": "Get git diff summary of changes",
+        },
+        "terminal": {
+            "history": "Get recent shell command history",
+        },
+        "system": {
+            "status": "Get system status (CPU, RAM, disk usage)",
+            "processes": "List top running processes by resource usage",
+        },
+        "clipboard": {
+            "history": "Get recent clipboard history",
+            "search": "Search clipboard history for text",
+        },
+        "notes": {
+            "search": "Search local markdown/text notes",
+            "recent": "List recently modified notes",
+        },
+    }
+
+    for plugin_info in plugin_mgr.list_plugins():
+        p_name = plugin_info["name"]
+        intents = _PLUGIN_INTENTS.get(p_name, {})
+
+        # Auto-enable plugins so they're available as tools
+        if not plugin_info["enabled"]:
+            plugin_mgr.enable(p_name)
+
+        for intent, desc in intents.items():
+            def make_executor(plugin_name, intent_name):
+                def executor(**kwargs):
+                    result = plugin_mgr.query_plugin(plugin_name, intent_name, kwargs)
+                    if result.success:
+                        data = result.data
+                        if isinstance(data, (dict, list)):
+                            return json.dumps(data, indent=2, default=str)[:2000]
+                        return str(data)[:2000]
+                    return f"Error: {result.error}"
+                return executor
+
+            # Build params based on intent
+            params = []
+            if intent in ("search",):
+                params.append(ToolParam(name="query", description="Search query", type="string"))
+            if intent in ("history", "log", "recent", "processes"):
+                params.append(ToolParam(name="n", description="Number of results", type="string", required=False, default="10"))
+
+            tool = Tool(
+                name=f"{p_name}_{intent}",
+                description=desc,
+                params=params,
+                execute=make_executor(p_name, intent),
+                category=p_name,
+            )
+            tool_registry.register(tool)
+
+
+def _register_meta_tools(tool_registry, sm, em, wm):
+    """Register built-in meta-tools for memory management."""
+    from homie_core.brain.tool_registry import Tool, ToolParam
+
+    # Tool: remember a fact
+    def remember_fact(fact: str = "", confidence: str = "0.7", **kwargs):
+        if not sm or not fact:
+            return "Cannot store facts — semantic memory not available."
+        conf = float(confidence) if confidence else 0.7
+        sm.learn(fact, confidence=conf, tags=["user_explicit"])
+        return f"Remembered: {fact}"
+
+    tool_registry.register(Tool(
+        name="remember",
+        description="Store a fact about the user for future reference",
+        params=[
+            ToolParam(name="fact", description="The fact to remember", type="string"),
+            ToolParam(name="confidence", description="Confidence level 0-1", type="string", required=False, default="0.7"),
+        ],
+        execute=remember_fact,
+        category="memory",
+    ))
+
+    # Tool: recall facts
+    def recall_facts(query: str = "", **kwargs):
+        if not sm:
+            return "Semantic memory not available."
+        facts = sm.get_facts(min_confidence=0.3)
+        if not facts:
+            return "No facts stored yet."
+        if query:
+            from homie_core.brain.cognitive_arch import _tf_idf_relevance
+            texts = [f["fact"] for f in facts]
+            scores = _tf_idf_relevance(query, texts)
+            scored = sorted(zip(facts, scores), key=lambda x: x[1], reverse=True)
+            relevant = [f for f, s in scored[:5] if s > 0.05]
+            if relevant:
+                return "\n".join(f"- {f['fact']} (confidence: {f['confidence']:.0%})" for f in relevant)
+            return "No relevant facts found."
+        return "\n".join(f"- {f['fact']} (confidence: {f['confidence']:.0%})" for f in facts[:10])
+
+    tool_registry.register(Tool(
+        name="recall",
+        description="Search stored facts and memories about the user",
+        params=[
+            ToolParam(name="query", description="What to search for", type="string", required=False, default=""),
+        ],
+        execute=recall_facts,
+        category="memory",
+    ))
+
+    # Tool: forget a fact
+    def forget_fact(topic: str = "", **kwargs):
+        if not sm or not topic:
+            return "Cannot forget — semantic memory not available or no topic given."
+        sm.forget_topic(topic)
+        return f"Forgotten facts about: {topic}"
+
+    tool_registry.register(Tool(
+        name="forget",
+        description="Forget stored facts about a topic (privacy)",
+        params=[
+            ToolParam(name="topic", description="The topic to forget", type="string"),
+        ],
+        execute=forget_fact,
+        category="memory",
+    ))
+
+
+def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
+    """Handle slash commands. Returns response string, or None if not a command."""
+    cmd = command.strip().lower()
+
+    if cmd == "/status":
+        lines = ["**Homie Status**"]
+        lines.append(f"  Memory: {len(wm.get_conversation())} messages this session")
+        if sm:
+            facts = sm.get_facts(min_confidence=0.0)
+            lines.append(f"  Facts stored: {len(facts)}")
+        if em:
+            lines.append("  Episodic memory: active")
+        lines.append(f"  User: {cfg.user_name or 'Unknown'}")
+        return "\n".join(lines)
+
+    if cmd == "/learn":
+        stats = brain._cognitive._learning.get_session_stats()
+        lines = ["**Session Learning Stats**"]
+        lines.append(f"  Interactions: {stats['interactions']}")
+        lines.append(f"  Facts learned: {stats['facts_learned']}")
+        if stats['facts']:
+            for f in stats['facts']:
+                lines.append(f"    - {f}")
+        return "\n".join(lines)
+
+    if cmd == "/facts":
+        if not sm:
+            return "Semantic memory not available."
+        facts = sm.get_facts(min_confidence=0.3)
+        if not facts:
+            return "No facts stored yet. Chat with me and I'll learn about you!"
+        lines = ["**What I know about you:**"]
+        for f in facts[:15]:
+            lines.append(f"  - {f['fact']} ({f['confidence']:.0%} confident)")
+        return "\n".join(lines)
+
+    if cmd.startswith("/remember "):
+        fact = command[10:].strip()
+        if sm and fact:
+            sm.learn(fact, confidence=0.9, tags=["user_explicit"])
+            return f"Got it, I'll remember: {fact}"
+        return "Could not store that — semantic memory not available."
+
+    if cmd.startswith("/forget "):
+        topic = command[8:].strip()
+        if sm and topic:
+            sm.forget_topic(topic)
+            return f"Forgotten everything about: {topic}"
+        return "Could not forget — semantic memory not available."
+
+    if cmd == "/clear":
+        wm.clear()
+        return "Conversation cleared. Fresh start!"
+
+    if cmd == "/help":
+        return (
+            "**Homie Commands:**\n"
+            "  /status    — Show system status\n"
+            "  /facts     — Show what I know about you\n"
+            "  /learn     — Show what I learned this session\n"
+            "  /remember  — Store a fact (e.g., /remember I prefer dark mode)\n"
+            "  /forget    — Forget a topic (e.g., /forget work)\n"
+            "  /clear     — Clear conversation (fresh start)\n"
+            "  /help      — Show this help\n"
+            "  quit       — Exit chat"
+        )
+
+    return None
+
+
 def cmd_chat(args, config=None):
     from homie_core.config import load_config
-    from homie_core.memory.working import WorkingMemory
     from homie_core.brain.orchestrator import BrainOrchestrator
-    from homie_app.prompts.system import SYSTEM_PROMPT
+    from homie_app.prompts.system import build_system_prompt
 
     cfg = config or load_config(args.config if hasattr(args, 'config') else None)
     print("=" * 50)
@@ -199,24 +503,54 @@ def cmd_chat(args, config=None):
         print("  No model found. Run 'homie init' first, or 'homie model add <path>'.")
         return
 
-    wm = WorkingMemory()
-    brain = BrainOrchestrator(model_engine=engine, working_memory=wm)
-    brain.set_system_prompt(SYSTEM_PROMPT)
+    print("\n[Initializing intelligence...]")
+    wm, em, sm, tool_registry, rag, plugin_mgr = _init_intelligence_stack(cfg)
 
+    # Build brain with full intelligence stack
+    brain = BrainOrchestrator(
+        model_engine=engine,
+        working_memory=wm,
+        episodic_memory=em,
+        semantic_memory=sm,
+        tool_registry=tool_registry if tool_registry.list_tools() else None,
+        rag_pipeline=rag,
+    )
+
+    # Build dynamic system prompt with user context
     user_name = cfg.user_name or "User"
-    print(f"\nHey{' ' + user_name if user_name != 'User' else ''}! Type your message or 'quit' to exit.\n")
+    known_facts = []
+    if sm:
+        try:
+            facts = sm.get_facts(min_confidence=0.5)
+            known_facts = [f["fact"] for f in facts[:10]]
+        except Exception:
+            pass
+
+    system_prompt = build_system_prompt(
+        user_name=user_name,
+        known_facts=known_facts if known_facts else None,
+    )
+    brain.set_system_prompt(system_prompt)
+
+    print(f"\nHey{' ' + user_name if user_name != 'User' else ''}! I'm ready. Type /help for commands or just start chatting.\n")
 
     while True:
         try:
             user_input = input(f"{user_name}> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nGoodbye!")
+            print("\n")
             break
         if user_input.lower() in ("quit", "exit", ":q"):
-            print("Goodbye!")
             break
         if not user_input:
             continue
+
+        # Handle meta-commands
+        if user_input.startswith("/"):
+            result = _handle_meta_command(user_input, brain, wm, sm, em, cfg)
+            if result is not None:
+                print(f"Homie> {result}\n")
+                continue
 
         try:
             import sys
@@ -251,8 +585,19 @@ def cmd_chat(args, config=None):
         except Exception as e:
             print(f"Homie> [Error: {e}]\n")
 
+    # Consolidate session into episodic memory before exiting
+    print("[Saving session...]")
+    try:
+        summary = brain.consolidate_session()
+        if summary:
+            print(f"  Session saved: {summary}")
+        else:
+            print("  Nothing to save.")
+    except Exception:
+        print("  Could not save session.")
+
     engine.unload()
-    print("Model unloaded.")
+    print("Goodbye!")
 
 
 def cmd_model(args, config=None):

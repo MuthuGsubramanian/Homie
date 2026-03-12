@@ -286,3 +286,100 @@ class TestBuiltinTools:
                     "search_files", "read_file", "user_context"]
         for name in expected:
             assert self.registry.get(name) is not None, f"Tool '{name}' not registered"
+
+
+# -----------------------------------------------------------------------
+# New tool call format parsing (Action:, markdown code blocks)
+# -----------------------------------------------------------------------
+
+class TestNewToolCallFormats:
+    def test_action_format(self):
+        text = 'Action: search(query="python tutorials")'
+        calls = parse_tool_calls(text)
+        assert len(calls) == 1
+        assert calls[0].name == "search"
+        assert calls[0].arguments["query"] == "python tutorials"
+
+    def test_markdown_code_block_format(self):
+        text = '```tool\n{"name": "recall", "arguments": {"query": "preferences"}}\n```'
+        calls = parse_tool_calls(text)
+        assert len(calls) == 1
+        assert calls[0].name == "recall"
+        assert calls[0].arguments["query"] == "preferences"
+
+    def test_markdown_json_block_format(self):
+        text = '```json\n{"name": "system_info", "arguments": {}}\n```'
+        calls = parse_tool_calls(text)
+        assert len(calls) == 1
+        assert calls[0].name == "system_info"
+
+    def test_xml_format_takes_priority(self):
+        """When both XML and Action formats exist, XML should win."""
+        text = 'Action: wrong()\n<tool>correct()</tool>'
+        calls = parse_tool_calls(text)
+        assert len(calls) == 1
+        assert calls[0].name == "correct"
+
+    def test_action_format_case_insensitive(self):
+        text = 'action: search(query="test")'
+        calls = parse_tool_calls(text)
+        assert len(calls) == 1
+        assert calls[0].name == "search"
+
+
+# -----------------------------------------------------------------------
+# Self-correction in agentic loop
+# -----------------------------------------------------------------------
+
+class TestAgenticLoopSelfCorrection:
+    def test_self_correction_after_tool_error(self):
+        engine = MagicMock()
+        engine.generate.side_effect = [
+            '<tool>broken_tool()</tool>',
+            "I couldn't use that tool. Let me help differently.",
+        ]
+
+        registry = ToolRegistry()
+        registry.register(Tool(
+            name="broken_tool", description="Always fails",
+            execute=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        ))
+
+        loop = AgenticLoop(engine, registry)
+        result = loop.process("test")
+        assert engine.generate.call_count == 2
+        # The error guidance should have been in the re-prompt
+        second_call_prompt = engine.generate.call_args_list[1][0][0]
+        assert "different approach" in second_call_prompt
+
+    def test_three_consecutive_errors_stops(self):
+        engine = MagicMock()
+        engine.generate.return_value = '<tool>broken_tool()</tool>'
+
+        registry = ToolRegistry()
+        registry.register(Tool(
+            name="broken_tool", description="Always fails",
+            execute=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        ))
+
+        loop = AgenticLoop(engine, registry, max_iterations=7)
+        result = loop.process("test")
+        # Should stop after 3 consecutive errors, not go to max_iterations
+        assert engine.generate.call_count == 3
+        assert "repeated tool errors" in result.lower()
+
+
+# -----------------------------------------------------------------------
+# Strip new tool markers
+# -----------------------------------------------------------------------
+
+class TestStripNewToolMarkers:
+    def test_strips_action_markers(self):
+        text = "Let me search. Action: search(query=\"test\") Here are results."
+        clean = _strip_tool_markers(text)
+        assert "Action:" not in clean
+
+    def test_strips_markdown_tool_blocks(self):
+        text = 'Here:\n```tool\n{"name": "search", "arguments": {"q": "test"}}\n```\nDone.'
+        clean = _strip_tool_markers(text)
+        assert "```tool" not in clean

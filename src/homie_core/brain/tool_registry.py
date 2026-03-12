@@ -61,17 +61,33 @@ _JSON_TOOL_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# Action/Observation format (used by many LLMs):
+# Action: tool_name(param="value")
+_ACTION_TOOL_PATTERN = re.compile(
+    r'Action:\s*(\w+)\s*\(([^)]*)\)',
+    re.IGNORECASE,
+)
+
+# Markdown code block tool format:
+# ```tool\n{"name": "...", "arguments": {...}}\n```
+_MARKDOWN_TOOL_PATTERN = re.compile(
+    r'```(?:tool|tool_code|json)?\s*\n\s*\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*?\})\s*\}\s*\n```',
+    re.DOTALL,
+)
+
 
 def parse_tool_calls(text: str) -> list[ToolCall]:
     """Extract tool calls from model output.
 
-    Supports two formats:
+    Supports multiple formats for maximum LLM compatibility:
     1. <tool>name(key="value", ...)</tool>
     2. {"tool": "name", "args": {"key": "value"}}
+    3. Action: name(key="value")
+    4. ```tool\n{"name": "...", "arguments": {...}}\n```
     """
     calls = []
 
-    # Try XML-style format first
+    # Try XML-style format first (highest priority — our native format)
     for match in _TOOL_CALL_PATTERN.finditer(text):
         name = match.group(1)
         args_str = match.group(2).strip()
@@ -86,6 +102,24 @@ def parse_tool_calls(text: str) -> list[ToolCall]:
                 args = json.loads(match.group(2))
             except json.JSONDecodeError:
                 args = {}
+            calls.append(ToolCall(name=name, arguments=args))
+
+    # Try markdown code block format
+    if not calls:
+        for match in _MARKDOWN_TOOL_PATTERN.finditer(text):
+            name = match.group(1)
+            try:
+                args = json.loads(match.group(2))
+            except json.JSONDecodeError:
+                args = {}
+            calls.append(ToolCall(name=name, arguments=args))
+
+    # Try Action: format (fallback)
+    if not calls:
+        for match in _ACTION_TOOL_PATTERN.finditer(text):
+            name = match.group(1)
+            args_str = match.group(2).strip()
+            args = _parse_kwargs(args_str)
             calls.append(ToolCall(name=name, arguments=args))
 
     return calls

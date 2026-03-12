@@ -30,6 +30,21 @@ _PREFERENCE_PATTERNS = [
     re.compile(r"\bi\s+work\s+(?:at|on|with|for|in)\s+(.{3,60}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
     # "My name is X" or "Call me X"
     re.compile(r"(?:my name is|call me|i'm called)\s+(\w+)", re.IGNORECASE),
+    # "I usually/typically/normally X"
+    re.compile(r"\bi\s+(?:usually|typically|normally|tend to|often)\s+(.{5,80})", re.IGNORECASE),
+    # "I've been X-ing for Y" (experience)
+    re.compile(r"\bi(?:'ve| have)\s+been\s+(\w+ing)\s+(?:for|since)\s+(.{3,40})", re.IGNORECASE),
+    # "I speak/know/study X" (skills/languages)
+    re.compile(r"\bi\s+(?:speak|know|study|learned|learn|practice)\s+(.{3,60}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
+    # "I live in X" / "I'm from X" / "I'm based in X"
+    re.compile(r"\bi(?:'m| am)\s+(?:from|based in|living in|located in)\s+(.{3,40}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
+    re.compile(r"\bi\s+live\s+in\s+(.{3,40}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
+    # "I'm interested in X" / "I'm passionate about X"
+    re.compile(r"\bi(?:'m| am)\s+(?:interested in|passionate about|into|focused on)\s+(.{3,60}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
+    # "My X is Y" (possessives)
+    re.compile(r"\bmy\s+(dog|cat|pet|car|phone|laptop|os|editor|ide|language|framework|stack|setup)\s+is\s+(.{3,40})", re.IGNORECASE),
+    # "I switched from X to Y" / "I moved from X to Y"
+    re.compile(r"\bi\s+(?:switched|moved|migrated|transitioned)\s+(?:from\s+\w+\s+)?to\s+(.{3,40}?)(?:\.|,|!|\?|$)", re.IGNORECASE),
 ]
 
 # Patterns indicating correction/update of existing knowledge
@@ -37,13 +52,22 @@ _CORRECTION_PATTERNS = [
     re.compile(r"\bactually,?\s+(?:i|my)\s+(.{5,80})", re.IGNORECASE),
     re.compile(r"\bno,?\s+(?:i|my|it's)\s+(.{5,80})", re.IGNORECASE),
     re.compile(r"\bthat's (?:wrong|incorrect|not right|outdated)", re.IGNORECASE),
+    re.compile(r"\bnot anymore", re.IGNORECASE),
+    re.compile(r"\bi\s+(?:stopped|quit|no longer|don't|don't)\s+(.{5,60})", re.IGNORECASE),
 ]
 
 # Things NOT to learn (too vague or transient)
 _SKIP_PATTERNS = [
     re.compile(r"^i\s+(want|need|have|think|know|see|feel|guess)\s+", re.IGNORECASE),
     re.compile(r"^i\s+(am|'m)\s+(not sure|confused|wondering|trying)", re.IGNORECASE),
+    re.compile(r"^i\s+(just|was just|am just)\s+", re.IGNORECASE),
+    re.compile(r"^can\s+(you|i)\s+", re.IGNORECASE),
 ]
+
+
+def _tokenize_simple(text: str) -> list[str]:
+    """Simple word tokenizer for overlap comparison."""
+    return re.findall(r"\w+", text.lower())
 
 
 class LearningPipeline:
@@ -78,12 +102,12 @@ class LearningPipeline:
         if len(text.strip()) < 10:
             return []
 
-        # Check if this is a correction
+        # Handle corrections — update existing facts rather than ignoring
         for pattern in _CORRECTION_PATTERNS:
-            if pattern.search(text):
-                # Don't auto-learn from corrections — the tool call
-                # or manual extraction should handle this
-                return []
+            match = pattern.search(text)
+            if match:
+                correction = self._handle_correction(text, match)
+                return correction
 
         # Skip vague statements
         for pattern in _SKIP_PATTERNS:
@@ -102,6 +126,47 @@ class LearningPipeline:
                     learned.append(fact)
 
         return learned
+
+    def _handle_correction(self, text: str, match: re.Match) -> list[str]:
+        """Handle a correction — try to find and update the contradicted fact."""
+        if not self._sm:
+            return []
+
+        # Extract the correction content
+        correction_text = match.group(0).strip()
+        correction_text = re.sub(r"^(actually,?\s*|no,?\s*)", "", correction_text, flags=re.IGNORECASE).strip()
+
+        if len(correction_text) < 10:
+            return []
+
+        # Find existing facts that might be contradicted
+        existing = self._sm.get_facts(min_confidence=0.0)
+        correction_words = set(_tokenize_simple(correction_text))
+
+        for f in existing:
+            fact_words = set(_tokenize_simple(f["fact"]))
+            # If there's topic overlap, this might be a correction
+            overlap = len(correction_words & fact_words)
+            if overlap >= 2:
+                # Reduce confidence of the old fact
+                self._sm._db._conn.execute(
+                    "UPDATE semantic_memory SET confidence = MAX(0.1, confidence - 0.3) WHERE id = ?",
+                    (f["id"],),
+                )
+                self._sm._db._conn.commit()
+
+        # Store the correction as a new fact with high confidence
+        formatted = re.sub(r"^[Ii]\s+", "User ", correction_text)
+        formatted = re.sub(r"^[Ii]'m\s+", "User is ", formatted)
+        formatted = re.sub(r"^[Mm]y\s+", "User's ", formatted)
+        formatted = formatted.rstrip(".,!?")
+
+        if len(formatted) >= 10 and not self._already_known(formatted):
+            self._sm.learn(formatted, confidence=0.8, tags=["correction"])
+            self._session_facts.append(formatted)
+            return [formatted]
+
+        return []
 
     def _format_fact(self, match: re.Match, pattern: re.Pattern) -> Optional[str]:
         """Format a regex match into a clean fact string."""

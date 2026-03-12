@@ -107,11 +107,11 @@ def classify_query_complexity(text: str, conversation_depth: int = 0) -> str:
 # ---------------------------------------------------------------------------
 
 _TOKEN_BUDGETS = {
-    QueryComplexity.TRIVIAL:  {"max_tokens": 128,  "prompt_chars": 1000,  "temperature": 0.8},
-    QueryComplexity.SIMPLE:   {"max_tokens": 256,  "prompt_chars": 2000,  "temperature": 0.7},
-    QueryComplexity.MODERATE: {"max_tokens": 512,  "prompt_chars": 4000,  "temperature": 0.7},
-    QueryComplexity.COMPLEX:  {"max_tokens": 1024, "prompt_chars": 6000,  "temperature": 0.6},
-    QueryComplexity.DEEP:     {"max_tokens": 2048, "prompt_chars": 8000,  "temperature": 0.5},
+    QueryComplexity.TRIVIAL:  {"max_tokens": 256,  "prompt_chars": 1500,  "temperature": 0.8},
+    QueryComplexity.SIMPLE:   {"max_tokens": 384,  "prompt_chars": 2500,  "temperature": 0.7},
+    QueryComplexity.MODERATE: {"max_tokens": 768,  "prompt_chars": 5000,  "temperature": 0.7},
+    QueryComplexity.COMPLEX:  {"max_tokens": 1536, "prompt_chars": 8000,  "temperature": 0.6},
+    QueryComplexity.DEEP:     {"max_tokens": 3072, "prompt_chars": 12000, "temperature": 0.5},
 }
 
 
@@ -271,6 +271,9 @@ class CognitiveArchitecture:
             semantic_memory=semantic_memory,
             episodic_memory=episodic_memory,
         )
+        # Conversation meta-tracking
+        self._topic_history: list[str] = []
+        self._user_engagement: float = 0.5  # 0=disengaged, 1=highly engaged
 
     # ------------------------------------------------------------------
     # Stage 1: PERCEIVE — gather situational awareness
@@ -410,8 +413,8 @@ class CognitiveArchitecture:
                     parts.append(section)
                     used += len(section)
 
-        # 3. Relevant knowledge (moderate+ queries)
-        if complexity in (QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+        # 3. Relevant knowledge (simple+ queries — facts help even for simple questions)
+        if complexity in (QueryComplexity.SIMPLE, QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
             if facts:
                 fact_lines = []
                 for f in facts:
@@ -445,41 +448,80 @@ class CognitiveArchitecture:
                     parts.append(f"\n{documents_block}")
                     used += len(documents_block)
 
-        # 6. Conversation history (adaptive depth)
+        # 6. Conversation history (smart compression)
         conversation = self._wm.get_conversation()
         if len(conversation) > 1:
             # More turns for complex queries
             max_turns = {
-                QueryComplexity.TRIVIAL: 0,
-                QueryComplexity.SIMPLE: 2,
-                QueryComplexity.MODERATE: 4,
-                QueryComplexity.COMPLEX: 8,
-                QueryComplexity.DEEP: 12,
+                QueryComplexity.TRIVIAL: 1,
+                QueryComplexity.SIMPLE: 3,
+                QueryComplexity.MODERATE: 6,
+                QueryComplexity.COMPLEX: 10,
+                QueryComplexity.DEEP: 16,
             }[complexity]
 
-            recent = conversation[-(max_turns * 2):] if max_turns > 0 else []
-            if recent:
-                conv_lines = []
-                for m in recent[:-1]:  # exclude current (it's in the query)
-                    role = m["role"].capitalize()
-                    content = m["content"]
-                    # Truncate individual messages proportionally
-                    max_msg = max_chars // (len(recent) + 2)
-                    if len(content) > max_msg:
-                        content = content[:max_msg] + "..."
-                    conv_lines.append(f"  {role}: {content}")
+            all_msgs = conversation[:-1]  # exclude current (it's in the query)
 
+            # Smart compression: keep recent turns verbatim, summarize older ones
+            recent_count = min(max_turns, len(all_msgs))
+            recent = all_msgs[-recent_count:] if recent_count > 0 else []
+            older = all_msgs[:-recent_count] if recent_count < len(all_msgs) else []
+
+            conv_lines = []
+
+            # Summarize older messages if they exist and query is complex enough
+            if older and complexity in (QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+                user_topics = []
+                for m in older:
+                    if m["role"] == "user":
+                        # Extract key nouns/verbs from older messages
+                        words = _tokenize(m["content"])
+                        key_words = [w for w in words if len(w) > 3][:5]
+                        if key_words:
+                            user_topics.extend(key_words)
+                if user_topics:
+                    # Deduplicate while preserving order
+                    seen = set()
+                    unique_topics = []
+                    for t in user_topics:
+                        if t not in seen:
+                            seen.add(t)
+                            unique_topics.append(t)
+                    summary = f"  [Earlier: discussed {', '.join(unique_topics[:8])}]"
+                    conv_lines.append(summary)
+
+            # Add recent messages verbatim
+            for m in recent:
+                role = m["role"].capitalize()
+                content = m["content"]
+                # Truncate individual messages proportionally
+                max_msg = max_chars // (len(recent) + 4)
+                if len(content) > max_msg:
+                    content = content[:max_msg] + "..."
+                conv_lines.append(f"  {role}: {content}")
+
+            if conv_lines:
                 conv_block = "\n[CONVERSATION]\n" + "\n".join(conv_lines)
                 if used + len(conv_block) < max_chars - len(query) - 50:
                     parts.append(conv_block)
                     used += len(conv_block)
 
-        # 6. Response guidance based on user state
+        # 7. Topic continuity (helps maintain coherent multi-turn conversations)
+        if self._topic_history and complexity != QueryComplexity.TRIVIAL:
+            recent_topics = self._topic_history[-5:]
+            if recent_topics:
+                topic_str = " → ".join(recent_topics)
+                topic_section = f"\n[TOPIC FLOW]\n{topic_str}"
+                if used + len(topic_section) < max_chars - len(query) - 50:
+                    parts.append(topic_section)
+                    used += len(topic_section)
+
+        # 8. Response guidance based on user state
         guidance = self._generate_response_guidance(complexity, awareness)
         if guidance:
             parts.append(f"\n[GUIDANCE]\n{guidance}")
 
-        # 7. User query (always last)
+        # 9. User query (always last)
         parts.append(f"\nUser: {query}\nAssistant:")
 
         return "\n".join(parts)
@@ -489,6 +531,15 @@ class CognitiveArchitecture:
     ) -> str:
         """Generate response style guidance based on user's cognitive state."""
         hints = []
+
+        # Chain-of-thought for complex queries
+        if complexity in (QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+            hints.append(
+                "This is a complex question. Think step by step: "
+                "1) Identify what's being asked, 2) Consider the key factors, "
+                "3) Reason through the options, 4) Give a clear recommendation. "
+                "Show your reasoning briefly before the conclusion."
+            )
 
         # Adapt to cognitive load
         load = awareness.cognitive_load()
@@ -514,6 +565,20 @@ class CognitiveArchitecture:
         # Adapt to time/energy
         if awareness.rhythmic_score < 0.3:
             hints.append("Low energy hour — keep response short and actionable.")
+
+        # Conversation continuity
+        if awareness.conversation_turns > 6:
+            hints.append(
+                "This is a long conversation — reference earlier context naturally. "
+                "Don't repeat what was already discussed."
+            )
+
+        # Engagement-based adaptation
+        if hasattr(self, '_user_engagement'):
+            if self._user_engagement > 0.7:
+                hints.append("User is highly engaged — give thorough, detailed responses.")
+            elif self._user_engagement < 0.3:
+                hints.append("User seems disengaged — be more concise and direct. Maybe ask if they need something different.")
 
         return " ".join(hints) if hints else ""
 
@@ -581,12 +646,38 @@ class CognitiveArchitecture:
 
         return prompt, budget_cfg, temperature
 
+    def _track_conversation_meta(self, user_input: str) -> None:
+        """Track conversation-level metadata: topics, engagement, mood shifts."""
+        # Extract topic keywords from current message
+        words = _tokenize(user_input)
+        stop = {"the", "a", "an", "is", "are", "was", "were", "be", "have", "has",
+                "do", "does", "did", "will", "would", "could", "should", "can",
+                "to", "of", "in", "for", "on", "with", "at", "by", "from", "as",
+                "and", "but", "or", "not", "no", "so", "if", "it", "my", "me",
+                "you", "your", "we", "they", "what", "how", "when", "where", "why",
+                "this", "that", "i", "just", "about"}
+        topic_words = [w for w in words if w not in stop and len(w) > 2]
+        if topic_words:
+            self._topic_history.append(" ".join(topic_words[:5]))
+            # Keep only recent topics
+            if len(self._topic_history) > 20:
+                self._topic_history = self._topic_history[-20:]
+
+        # Estimate engagement from message length and question marks
+        length_signal = min(len(user_input) / 200.0, 1.0)
+        question_signal = 0.3 if "?" in user_input else 0.0
+        detail_signal = 0.2 if len(words) > 15 else 0.0
+        # Exponential moving average
+        new_engagement = length_signal + question_signal + detail_signal
+        self._user_engagement = 0.7 * self._user_engagement + 0.3 * min(1.0, new_engagement)
+
     def process(self, user_input: str) -> str:
         """Full cognitive pipeline — blocking, with agentic loop + learning."""
         self._wm.add_message("user", user_input)
 
         # Learn from user input (lightweight pattern extraction)
         self._learning.process_user_message(user_input)
+        self._track_conversation_meta(user_input)
 
         # Stages 1-5: Perceive, Classify, Retrieve, Reason, Reflect
         prompt, budget_cfg, temperature = self._prepare_prompt(user_input)
@@ -609,6 +700,7 @@ class CognitiveArchitecture:
 
         # Learn from user input
         self._learning.process_user_message(user_input)
+        self._track_conversation_meta(user_input)
 
         # Stages 1-5
         prompt, budget_cfg, temperature = self._prepare_prompt(user_input)
