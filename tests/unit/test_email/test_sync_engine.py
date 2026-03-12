@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from homie_core.email.sync_engine import SyncEngine
 from homie_core.email.models import (
-    EmailMessage, EmailSyncConfig, HistoryChange, SyncResult, SyncState,
+    EmailMessage, EmailSyncConfig, HistoryChange, SyncResult,
 )
 
 
