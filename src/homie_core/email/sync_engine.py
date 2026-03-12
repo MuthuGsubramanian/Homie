@@ -12,8 +12,6 @@ import json
 import sqlite3
 import time
 from datetime import datetime
-from typing import Any
-
 from homie_core.email.classifier import EmailClassifier
 from homie_core.email.models import (
     EmailMessage,
@@ -160,8 +158,10 @@ class SyncEngine:
                 open_count = 999
                 if "newsletter" in msg.categories:
                     row = self._conn.execute(
-                        "SELECT COUNT(*) FROM emails WHERE sender=? AND account_id=? AND is_read=1 "
-                        "ORDER BY date DESC LIMIT 3",
+                        "SELECT COUNT(*) FROM ("
+                        "  SELECT 1 FROM emails WHERE sender=? AND account_id=? AND is_read=1"
+                        "  ORDER BY date DESC LIMIT 3"
+                        ")",
                         (msg.sender, self._account_id),
                     ).fetchone()
                     open_count = row[0] if row else 0

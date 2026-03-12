@@ -22,7 +22,11 @@ def register_email_tools(registry: ToolRegistry, email_service) -> None:
     """Register all email tools with the tool registry."""
 
     def tool_email_search(query: str, account: str = "all", max_results: str = "10") -> str:
-        results = email_service.search(query, account=account, max_results=int(max_results))
+        try:
+            limit = int(max_results)
+        except (ValueError, TypeError):
+            limit = 10
+        results = email_service.search(query, account=account, max_results=limit)
         return _truncate(json.dumps([m.to_dict() if hasattr(m, "to_dict") else m for m in results]))
 
     registry.register(Tool(
@@ -97,7 +101,7 @@ def register_email_tools(registry: ToolRegistry, email_service) -> None:
 
     def tool_email_labels(account: str = "") -> str:
         labels = email_service.list_labels(account=account or None)
-        return json.dumps(labels)
+        return _truncate(json.dumps(labels))
 
     registry.register(Tool(
         name="email_labels",
@@ -110,7 +114,11 @@ def register_email_tools(registry: ToolRegistry, email_service) -> None:
     ))
 
     def tool_email_summary(days: str = "1") -> str:
-        result = email_service.get_summary(days=int(days))
+        try:
+            num_days = int(days)
+        except (ValueError, TypeError):
+            num_days = 1
+        result = email_service.get_summary(days=num_days)
         return _truncate(json.dumps(result))
 
     registry.register(Tool(
