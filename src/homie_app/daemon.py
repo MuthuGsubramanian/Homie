@@ -26,6 +26,8 @@ from homie_core.skills.loader import SkillLoader
 from homie_app.hotkey import HotkeyListener
 from homie_app.overlay import OverlayPopup
 from homie_app.prompts.system import build_system_prompt
+from homie_core.vault.secure_vault import SecureVault
+from homie_core.vault.sync_manager import SyncManager as VaultSyncManager
 
 
 class HomieDaemon:
@@ -103,6 +105,18 @@ class HomieDaemon:
 
         # Skill loader for user-defined skill files
         self._skill_loader = SkillLoader()
+
+        # Secure vault for credentials and encrypted data
+        vault_dir = storage / "vault"
+        self._vault = SecureVault(storage_dir=vault_dir)
+        try:
+            self._vault.unlock()
+            print("  Vault: unlocked")
+        except Exception as e:
+            print(f"  Vault: failed to unlock ({e})")
+
+        # Vault sync manager (callbacks registered by sub-projects)
+        self._vault_sync = VaultSyncManager(vault=self._vault)
 
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
@@ -404,6 +418,12 @@ class HomieDaemon:
                             print(f"  [Scheduler] {job.name}: {output[:100]}")
                     except Exception:
                         pass
+                    try:
+                        sync_results = self._vault_sync.tick()
+                        for provider, output in sync_results:
+                            print(f"  [Sync] {provider}: {output[:100]}")
+                    except Exception:
+                        pass
         except KeyboardInterrupt:
             self.stop()
 
@@ -425,6 +445,10 @@ class HomieDaemon:
             summary = self._brain.consolidate_session()
             if summary:
                 print(f"  Session saved: {summary}")
+
+        # Lock vault and stop sync
+        self._vault_sync = None
+        self._vault.lock()
 
         self._observer.stop()
         self._hotkey.stop()
