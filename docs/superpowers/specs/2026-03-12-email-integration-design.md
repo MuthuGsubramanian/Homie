@@ -19,7 +19,7 @@ User: "homie connect gmail"
     → Connection status set in cache.db
     → SyncManager callback registered
 
-Daemon tick (every 60s):
+Daemon tick (every 60s, sync fires when check_interval elapsed — default 5 min):
     → SyncEngine.sync_incremental()
         → Gmail history API (delta since last sync)
         → Classifier scores each new message (spam + priority)
@@ -107,7 +107,9 @@ class EmailProvider(ABC):
 
     @abstractmethod
     def create_draft(self, to: str, subject: str, body: str,
-                     reply_to: str | None = None) -> str:
+                     reply_to: str | None = None,
+                     cc: list[str] | None = None,
+                     bcc: list[str] | None = None) -> str:
         """Create a draft email. Returns draft ID."""
 
     @abstractmethod
@@ -166,6 +168,13 @@ class EmailThread:
     message_count: int
     last_message_date: float
     snippet: str
+    labels: list[str] = field(default_factory=list)
+
+
+@dataclass
+class HistoryChange:
+    message_id: str
+    change_type: str           # "added", "deleted", "labelAdded", "labelRemoved"
     labels: list[str] = field(default_factory=list)
 
 
@@ -231,13 +240,15 @@ gmail.compose    — Create drafts
 Before any Gmail API call, the provider checks `credential.expires_at`. If expired (or within 60s of expiry), it uses the refresh token to obtain a new access token and calls `vault.refresh_credential()`. This is thread-safe via the vault's per-credential locks.
 
 If refresh fails (token revoked by user in Google settings):
-- Mark connection as errored via `vault.set_connection_status(provider, connected=True, last_sync_error="Token revoked")`
-- Log consent event: `vault.log_consent("gmail", "token_revoked")`
+- Mark connection as disconnected: `vault.set_connection_status(provider, connected=False)`
+- Log consent event: `vault.log_consent("gmail", "token_revoked", reason="refresh_failed")`
 - Notify user: "Gmail connection lost. Run `homie connect gmail` to reconnect."
+
+**Note:** The vault's `set_connection_status` does not have a `last_sync_error` parameter. Error state is communicated by setting `connected=False` and logging the event via consent_log. The `EmailService` can also track error state internally in its `SyncState`.
 
 ### 5.4 Multi-Account
 
-Each `homie connect gmail` detects the authenticated email address from the profile API and stores credentials with `account_id=email_address`. Connecting again with a different Google account adds a second credential. All sync and tool operations iterate over `vault.list_credentials("gmail")`.
+Each `homie connect gmail` detects the authenticated email address from the profile API and stores credentials with `account_id=email_address`. Connecting again with a different Google account adds a second credential. All sync and tool operations iterate over `vault.list_credentials("gmail")` and filter for `active=True` only (since `list_credentials` returns both active and inactive credentials).
 
 ### 5.5 Client Credentials
 
@@ -312,7 +323,7 @@ Weighted heuristic signals (no external ML dependency):
 | Direct recipient (To field, not CC/BCC/list) | -0.2 |
 | Sender domain matches user's domain | -0.3 |
 
-**Score interpretation:**
+**Score interpretation** (final score clamped to `[0.0, 1.0]` after summing all signals):
 
 | Range | Action |
 |-------|--------|
@@ -374,23 +385,27 @@ When a message is categorized as `Homie/Bills`:
 3. Extract payee/description from subject
 4. Store via `vault.store_financial(source=f"gmail:{msg_id}", category="bill", ...)`
 
+If amount or due_date extraction fails (ambiguous, missing, or unparseable), the record is stored with `amount=None` / `due_date=None` and categorized as `"bill"` with `status="needs_review"` so the user can fill in details.
+
 This feeds into Sub-project #2 (Financial Management).
 
 ---
 
 ## 9. AI Tools
 
-Seven tools registered with the ToolRegistry:
+Nine tools registered with the ToolRegistry:
 
 | Tool | Params | Description |
 |------|--------|-------------|
 | `email_search` | `query`, `account="all"`, `max_results="10"` | Search emails using Gmail query syntax |
 | `email_read` | `message_id` | Fetch full body of a specific email |
 | `email_thread` | `thread_id` | Get all messages in a conversation |
-| `email_draft` | `to`, `subject`, `body`, `reply_to=None`, `account=None` | Create a draft (never sends) |
+| `email_draft` | `to`, `subject`, `body`, `reply_to=None`, `cc=None`, `bcc=None`, `account=None` | Create a draft (never sends) |
 | `email_labels` | `account=None` | List all labels for an account |
-| `email_summary` | `days="1"` | Summary of recent emails (count, highlights, action items) |
+| `email_summary` | `days="1"` | Summary: `{"unread": N, "high_priority": [...], "action_items": [...]}` |
 | `email_unread` | `account="all"` | List unread emails grouped by priority |
+| `email_archive` | `message_id` | Archive a message (remove from inbox) |
+| `email_mark_read` | `message_id` | Mark a message as read |
 
 **Tool output format:** JSON strings truncated to 2000 chars, consistent with existing tool patterns.
 
@@ -436,7 +451,7 @@ Stored per-account in `email_config` table:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `check_interval` | 300 (5 min) | Seconds between sync ticks |
+| `check_interval` | 300 (5 min) | Seconds between sync ticks. **Written through** to `connection_status.sync_interval` so that `SyncManager.tick()` uses the correct timing. The `email_config` table is the source of truth; on startup and config change, the value is synced to `connection_status`. |
 | `notify_priority` | `"high"` | Minimum priority to notify: `"high"`, `"medium"`, `"all"`, `"none"` |
 | `quiet_hours_start` | None | Hour (0-23) to start suppressing notifications |
 | `quiet_hours_end` | None | Hour (0-23) to stop suppressing notifications |
@@ -444,13 +459,13 @@ Stored per-account in `email_config` table:
 
 ---
 
-## 11. Database Schema (Migration v1 → v2)
+## 11. Database Schema
 
-New tables added to `cache.db` via schema migration:
+New tables added to `cache.db` by extending `_CACHE_DDL` in `schema.py`. Since `cache.db` uses `CREATE TABLE IF NOT EXISTS` (idempotent DDL), no migration system is needed — the tables are created on next startup. Cache data is ephemeral and re-syncable, so there is no data loss concern.
 
 ```sql
 CREATE TABLE IF NOT EXISTS emails (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL,
     thread_id TEXT NOT NULL,
     account_id TEXT NOT NULL,
     provider TEXT NOT NULL,
@@ -468,7 +483,8 @@ CREATE TABLE IF NOT EXISTS emails (
     priority TEXT DEFAULT 'medium',
     spam_score REAL DEFAULT 0.0,
     categories TEXT,              -- JSON array
-    fetched_at REAL
+    fetched_at REAL,
+    PRIMARY KEY (id, account_id)
 );
 
 CREATE TABLE IF NOT EXISTS email_sync_state (
@@ -505,6 +521,8 @@ CREATE INDEX IF NOT EXISTS idx_emails_priority ON emails(priority, date DESC);
 ```
 
 **Why `cache.db`?** Email content is non-sensitive metadata already stored on Google's servers. Plaintext storage avoids encryption overhead on search/read. OAuth tokens remain encrypted in `vault.db`. The email cache can be wiped and re-synced without data loss.
+
+**Cache eviction:** The sync engine evicts emails older than 90 days from the local cache on each full sync. Older emails can be re-fetched on demand via the provider. This prevents unbounded growth of the `emails` table.
 
 ---
 
