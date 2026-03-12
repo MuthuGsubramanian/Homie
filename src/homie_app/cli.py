@@ -112,6 +112,27 @@ def create_parser() -> argparse.ArgumentParser:
     email_sub.add_parser("sync", help="Force sync now")
     email_sub.add_parser("config", help="Show email settings")
 
+    # homie folder
+    folder_parser = subparsers.add_parser("folder", help="Folder awareness")
+    folder_sub = folder_parser.add_subparsers(dest="folder_command")
+    fw = folder_sub.add_parser("watch", help="Add a folder to watch")
+    fw.add_argument("path", type=str, help="Directory path to watch")
+    fw.add_argument("--label", type=str, default=None, help="Friendly label")
+    fw.add_argument("--interval", type=int, default=300, help="Scan interval in seconds")
+    folder_sub.add_parser("list", help="List watched folders")
+    fs = folder_sub.add_parser("scan", help="Force immediate scan")
+    fs.add_argument("--path", type=str, default=None, help="Scan specific folder only")
+    fu = folder_sub.add_parser("unwatch", help="Remove a folder watch")
+    fu.add_argument("path", type=str, help="Directory path to unwatch")
+
+    # homie social
+    social_parser = subparsers.add_parser("social", help="Social messaging")
+    social_sub = social_parser.add_subparsers(dest="social_command")
+    social_sub.add_parser("channels", help="List channels")
+    sr = social_sub.add_parser("recent", help="Recent messages from a channel")
+    sr.add_argument("channel", type=str, help="Channel ID")
+    sr.add_argument("--limit", type=int, default=20)
+
     return parser
 
 
@@ -994,8 +1015,11 @@ def cmd_connect(args, config=None):
     from homie_core.config import load_config
     cfg = config or load_config()
     provider = args.provider
+    if provider == "slack":
+        _connect_slack(args, config=cfg)
+        return
     if provider != "gmail":
-        print(f"Provider '{provider}' not yet supported. Available: gmail")
+        print(f"Provider '{provider}' not yet supported. Available: gmail, slack")
         return
 
     from homie_core.email.oauth import GmailOAuth, GMAIL_SCOPES
@@ -1167,6 +1191,162 @@ def cmd_email_config(args, config=None):
     cache_conn.close()
 
 
+def _connect_slack(args, config=None):
+    """Connect Slack workspace via OAuth."""
+    from homie_core.social.oauth import SlackOAuth, SLACK_SCOPES
+    from homie_core.vault.secure_vault import SecureVault
+    import time
+
+    cfg = config
+    storage = Path(cfg.storage.path)
+    vault = SecureVault(storage_dir=storage / "vault")
+    vault.unlock()
+
+    client_cred = vault.get_credential("slack", account_id="oauth_client")
+    if client_cred:
+        client_id = client_cred.access_token
+        client_secret = client_cred.refresh_token
+    else:
+        print("\nSlack OAuth Setup")
+        print("=" * 40)
+        print("You need a Slack App with OAuth configured.")
+        print("1. Go to https://api.slack.com/apps")
+        print("2. Create a new app (or use existing)")
+        print("3. Under OAuth & Permissions, add redirect URL: http://localhost:8549/callback")
+        print("4. Add the required Bot Token Scopes\n")
+        client_id = input("Client ID: ").strip()
+        client_secret = input("Client Secret: ").strip()
+        if not client_id or not client_secret:
+            print("Cancelled.")
+            vault.lock()
+            return
+
+        vault.store_credential(
+            provider="slack", account_id="oauth_client",
+            token_type="oauth_client",
+            access_token=client_id,
+            refresh_token=client_secret,
+            scopes=SLACK_SCOPES,
+        )
+
+    oauth = SlackOAuth(client_id=client_id, client_secret=client_secret)
+
+    print("\nOpening browser for Slack authorization...")
+    auth_url = oauth.get_auth_url()
+
+    import webbrowser
+    webbrowser.open(auth_url)
+
+    code = oauth.wait_for_redirect(timeout=120)
+    if not code:
+        print("\nAuthorization timed out or port unavailable.")
+        vault.lock()
+        return
+    tokens = oauth.exchange(code)
+
+    team_name = tokens.get("team", {}).get("name", "unknown")
+    team_id = tokens.get("team", {}).get("id", "unknown")
+    bot_token = tokens.get("access_token", "")
+
+    vault.store_credential(
+        provider="slack", account_id=team_id,
+        token_type="oauth2",
+        access_token=bot_token,
+        refresh_token="",
+        scopes=SLACK_SCOPES,
+    )
+
+    vault.set_connection_status("slack", connected=True, label=team_name)
+    vault.log_consent("slack", "connected", scopes=SLACK_SCOPES)
+
+    print(f"\nConnected: {team_name} ({team_id})")
+    print("Run `homie social channels` to see available channels.")
+    vault.lock()
+
+
+def cmd_folder(args, config=None):
+    """Folder awareness commands."""
+    from homie_core.config import load_config
+    from homie_core.vault.schema import create_cache_db
+
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path)
+    cache_conn = create_cache_db(storage / "cache.db")
+
+    from homie_core.folders import FolderService
+    service = FolderService(cache_conn=cache_conn)
+
+    sub = args.folder_command
+    if sub == "watch":
+        target = Path(args.path).resolve()
+        if not target.is_dir():
+            print(f"Error: '{target}' is not a directory.")
+            return
+        service.add_watch(str(target), label=args.label, scan_interval=args.interval)
+        print(f"Watching: {target} (interval: {args.interval}s)")
+    elif sub == "list":
+        watches = service.list_watches()
+        if not watches:
+            print("No folders watched. Use: homie folder watch <path>")
+        else:
+            for w in watches:
+                label = f" ({w['label']})" if w.get("label") else ""
+                print(f"  {w['path']}{label}  [{w['file_count']} files, every {w['scan_interval']}s]")
+    elif sub == "scan":
+        result = service.scan_tick()
+        print(f"Scan: {result}")
+    elif sub == "unwatch":
+        target = Path(args.path).resolve()
+        removed = service.remove_watch(str(target))
+        if removed:
+            print(f"Unwatched: {target}")
+        else:
+            print(f"Not found: {target}")
+    else:
+        print("Usage: homie folder {watch|list|scan|unwatch}")
+    cache_conn.close()
+
+
+def cmd_social(args, config=None):
+    """Social messaging commands."""
+    from homie_core.config import load_config
+    from homie_core.vault.secure_vault import SecureVault
+
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path)
+    vault = SecureVault(storage_dir=storage / "vault")
+    vault.unlock()
+
+    from homie_core.social import SocialService
+    service = SocialService(vault=vault)
+    workspaces = service.initialize()
+
+    if not workspaces:
+        print("No social platforms connected. Run: homie connect slack")
+        vault.lock()
+        return
+
+    sub = args.social_command
+    if sub == "channels":
+        channels = service.list_channels()
+        if not channels:
+            print("No channels found.")
+        else:
+            for ch in channels:
+                private = " (private)" if ch.get("is_private") else ""
+                print(f"  {ch['id']}  #{ch['name']}{private}  ({ch.get('member_count', '?')} members)")
+    elif sub == "recent":
+        messages = service.get_messages(args.channel, limit=args.limit)
+        if not messages:
+            print(f"No messages in {args.channel}. Run `homie start` to sync first.")
+        else:
+            for m in messages:
+                print(f"  [{m.get('sender', '?')}] {m.get('text', '')[:120]}")
+    else:
+        print("Usage: homie social {channels|recent}")
+    vault.lock()
+
+
 def cmd_disconnect(args, config=None):
     """Disconnect a provider with user confirmation."""
     from homie_core.vault.secure_vault import SecureVault
@@ -1232,6 +1412,8 @@ def main(argv: list[str] | None = None):
             "sync": cmd_email_sync,
             "config": cmd_email_config,
         }.get(args.email_command, lambda a, c=None: print("Usage: homie email {summary|sync|config}"))(args, cfg),
+        "folder": cmd_folder,
+        "social": cmd_social,
     }
 
     handler = commands.get(args.command)

@@ -139,6 +139,50 @@ class HomieDaemon:
         except Exception as e:
             print(f"  Email: not available ({e})")
 
+        # Initialize financial service
+        self._financial_service = None
+        try:
+            from homie_core.financial import FinancialService
+            self._financial_service = FinancialService(
+                vault=self._vault, working_memory=self._working_memory,
+            )
+            self._vault_sync.register_callback("financial", self._financial_service.reminder_tick)
+            print("  Financial: active")
+        except Exception as e:
+            print(f"  Financial: not available ({e})")
+
+        # Initialize folder service
+        self._folder_service = None
+        try:
+            from homie_core.folders import FolderService
+            from homie_core.vault.schema import create_cache_db
+            cache_path = storage / "cache.db"
+            folder_conn = create_cache_db(cache_path)
+            self._folder_service = FolderService(cache_conn=folder_conn)
+            watches = self._folder_service.list_watches()
+            if watches:
+                self._vault_sync.register_callback("folders", self._folder_service.scan_tick)
+                print(f"  Folders: {len(watches)} folder(s) watched")
+        except Exception as e:
+            print(f"  Folders: not available ({e})")
+
+        # Initialize social service if Slack is connected
+        self._social_service = None
+        try:
+            slack_creds = self._vault.list_credentials("slack")
+            active_slack = [c for c in slack_creds if c.active and c.account_id != "oauth_client"]
+            if active_slack:
+                from homie_core.social import SocialService
+                self._social_service = SocialService(
+                    vault=self._vault, working_memory=self._working_memory,
+                )
+                workspaces = self._social_service.initialize()
+                if workspaces:
+                    self._vault_sync.register_callback("slack", self._social_service.sync_tick)
+                    print(f"  Social: {len(workspaces)} Slack workspace(s) connected")
+        except Exception as e:
+            print(f"  Social: not available ({e})")
+
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
 
@@ -313,6 +357,21 @@ class HomieDaemon:
                 from homie_core.email.tools import register_email_tools
                 register_email_tools(tool_registry, self._email_service)
 
+            # Register financial tools
+            if self._financial_service:
+                from homie_core.financial.tools import register_financial_tools
+                register_financial_tools(tool_registry, self._financial_service)
+
+            # Register folder tools
+            if self._folder_service:
+                from homie_core.folders.tools import register_folder_tools
+                register_folder_tools(tool_registry, self._folder_service)
+
+            # Register social tools
+            if self._social_service:
+                from homie_core.social.tools import register_social_tools
+                register_social_tools(tool_registry, self._social_service)
+
             self._brain = BrainOrchestrator(
                 model_engine=self._engine,
                 working_memory=self._working_memory,
@@ -473,9 +532,15 @@ class HomieDaemon:
             if summary:
                 print(f"  Session saved: {summary}")
 
-        # Close email service
+        # Close services
         if self._email_service:
             self._email_service = None
+        if self._financial_service:
+            self._financial_service = None
+        if self._folder_service:
+            self._folder_service = None
+        if self._social_service:
+            self._social_service = None
 
         # Lock vault and stop sync
         self._vault_sync = None
