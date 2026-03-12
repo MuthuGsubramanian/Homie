@@ -86,7 +86,14 @@ class TestSocialServiceSyncTick:
         result = service.sync_tick()
 
         assert "slack: 1 mention(s)" in result
-        working_memory.push.assert_called_once()
+        working_memory.update.assert_called_once_with("social_mentions", [
+            {
+                "platform": "slack",
+                "reason": "mention",
+                "sender": "U123",
+                "content": "Hey check this!",
+            },
+        ])
 
     def test_sync_tick_no_providers(self):
         vault = MagicMock()

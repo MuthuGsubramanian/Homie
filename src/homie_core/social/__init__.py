@@ -62,14 +62,16 @@ class SocialService:
             try:
                 mentions = provider.get_unread_mentions()
                 if mentions and self._working_memory is not None:
+                    summaries = []
                     for msg in mentions[:5]:
-                        notification = SocialNotification(
-                            message=msg,
-                            reason="mention" if msg.is_mention else "dm",
-                        )
-                        self._working_memory.push(
-                            f"[{platform}] New {notification.reason} from {msg.sender}: {msg.content[:100]}"
-                        )
+                        reason = "mention" if msg.is_mention else "dm"
+                        summaries.append({
+                            "platform": platform,
+                            "reason": reason,
+                            "sender": msg.sender,
+                            "content": msg.content[:100],
+                        })
+                    self._working_memory.update("social_mentions", summaries)
                 count = len(mentions)
                 parts.append(f"{platform}: {count} mention(s)")
             except Exception as exc:
