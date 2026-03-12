@@ -80,6 +80,30 @@ def create_parser() -> argparse.ArgumentParser:
     # homie skills
     skills_parser = subparsers.add_parser("skills", help="List available skills")
 
+    # homie connections
+    sub_connections = subparsers.add_parser("connections", help="List provider connections")
+    sub_connections.set_defaults(func=cmd_connections)
+
+    # homie consent-log
+    sub_consent = subparsers.add_parser("consent-log", help="Show consent audit trail")
+    sub_consent.add_argument("provider", help="Provider name (gmail, slack, etc.)")
+    sub_consent.set_defaults(func=cmd_consent_log)
+
+    # homie vault
+    sub_vault = subparsers.add_parser("vault", help="Vault management")
+    vault_sub = sub_vault.add_subparsers(dest="vault_cmd")
+    vault_status = vault_sub.add_parser("status", help="Show vault health")
+    vault_status.set_defaults(func=cmd_vault_status)
+
+    # homie connect / disconnect
+    sub_connect = subparsers.add_parser("connect", help="Connect a provider")
+    sub_connect.add_argument("provider", help="Provider name (gmail, slack, etc.)")
+    sub_connect.set_defaults(func=cmd_connect)
+
+    sub_disconnect = subparsers.add_parser("disconnect", help="Disconnect a provider")
+    sub_disconnect.add_argument("provider", help="Provider name")
+    sub_disconnect.set_defaults(func=cmd_disconnect)
+
     return parser
 
 
@@ -523,20 +547,38 @@ def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
         except Exception as e:
             return f"Could not load skills: {e}"
 
+    if cmd == "/connections":
+        try:
+            from homie_core.vault.secure_vault import SecureVault
+            vault = SecureVault()
+            vault.unlock()
+            connections = vault.get_all_connections()
+            vault.lock()
+            if not connections:
+                return "No connections configured."
+            lines = ["**Connections:**"]
+            for c in connections:
+                icon = "+" if c.connected else "-"
+                lines.append(f"  [{icon}] {c.provider}: {c.display_label or 'no label'}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Could not check connections: {e}"
+
     if cmd == "/help":
         return (
             "**Homie Commands:**\n"
-            "  /status    — Show system status\n"
-            "  /facts     — Show what I know about you\n"
-            "  /learn     — Show what I learned this session\n"
-            "  /remember  — Store a fact (e.g., /remember I prefer dark mode)\n"
-            "  /forget    — Forget a topic (e.g., /forget work)\n"
-            "  /insights  — Show usage analytics (sessions, topics, streaks)\n"
-            "  /schedule  — Create scheduled task (e.g., /schedule name every_2h prompt)\n"
-            "  /skills    — List installed skills\n"
-            "  /clear     — Clear conversation (fresh start)\n"
-            "  /help      — Show this help\n"
-            "  quit       — Exit chat"
+            "  /status      — Show system status\n"
+            "  /facts       — Show what I know about you\n"
+            "  /learn       — Show what I learned this session\n"
+            "  /remember    — Store a fact (e.g., /remember I prefer dark mode)\n"
+            "  /forget      — Forget a topic (e.g., /forget work)\n"
+            "  /insights    — Show usage analytics (sessions, topics, streaks)\n"
+            "  /schedule    — Create scheduled task (e.g., /schedule name every_2h prompt)\n"
+            "  /skills      — List installed skills\n"
+            "  /connections — Show connected providers\n"
+            "  /clear       — Clear conversation (fresh start)\n"
+            "  /help        — Show this help\n"
+            "  quit         — Exit chat"
         )
 
     return None
@@ -811,6 +853,117 @@ def cmd_skills(args, config=None):
     print(loader.build_skills_index())
 
 
+def cmd_connections(args, config=None):
+    """List all connection statuses."""
+    from homie_core.vault.secure_vault import SecureVault
+    vault = SecureVault()
+    try:
+        vault.unlock()
+        connections = vault.get_all_connections()
+        if not connections:
+            print("No connections configured. Use 'homie connect <provider>' to add one.")
+            return
+        for c in connections:
+            icon = "+" if c.connected else "-"
+            mode = f" ({c.connection_mode})" if c.connected else ""
+            print(f"  [{icon}] {c.provider}: {c.display_label or 'no label'}{mode}")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        vault.lock()
+
+
+def cmd_consent_log(args, config=None):
+    """Show consent audit trail for a provider."""
+    from homie_core.vault.secure_vault import SecureVault
+    provider = args.provider
+    vault = SecureVault()
+    try:
+        vault.unlock()
+        history = vault.get_consent_history(provider)
+        if not history:
+            print(f"No consent history for '{provider}'.")
+            return
+        for entry in history:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+            scopes_str = ", ".join(entry.scopes) if entry.scopes else ""
+            reason_str = f"  reason: {entry.reason}" if entry.reason else ""
+            print(f"  {dt}  {entry.action:<15} {scopes_str}{reason_str}")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        vault.lock()
+
+
+def cmd_vault_status(args, config=None):
+    """Show vault health and statistics."""
+    from pathlib import Path
+    from homie_core.vault.secure_vault import SecureVault
+    vault = SecureVault()
+    try:
+        vault.unlock()
+        connections = vault.get_all_connections()
+        active = sum(1 for c in connections if c.connected)
+        vault_path = Path.home() / ".homie" / "vault"
+        vault_size = (vault_path / "vault.db").stat().st_size if (vault_path / "vault.db").exists() else 0
+        cache_size = (vault_path / "cache.db").stat().st_size if (vault_path / "cache.db").exists() else 0
+
+        print(f"  Vault DB: {vault_size / 1024:.1f} KB")
+        print(f"  Cache DB: {cache_size / 1024:.1f} KB")
+        print(f"  Connections: {active} active / {len(connections)} total")
+        print(f"  Password: {'set' if vault.has_password else 'not set'}")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        vault.lock()
+
+
+def cmd_connect(args, config=None):
+    """Stub for provider connection — full OAuth flow added in sub-project 1."""
+    provider = args.provider
+    print(f"Connecting to {provider}...")
+    print("OAuth integration not yet available. Coming in email/social sub-projects.")
+
+
+def cmd_disconnect(args, config=None):
+    """Disconnect a provider with user confirmation."""
+    from homie_core.vault.secure_vault import SecureVault
+    provider = args.provider
+    vault = SecureVault()
+    try:
+        vault.unlock()
+        cred = vault.get_credential(provider)
+        if not cred:
+            print(f"No active connection for '{provider}'.")
+            return
+        print(f"Disconnecting {provider}...")
+        print("  1) Disconnect (keep credentials encrypted, can reconnect later)")
+        print("  2) Disconnect and delete credentials permanently")
+        print("  3) Cancel")
+        choice = input("Choose [1/2/3]: ").strip()
+        if choice == "1":
+            vault.deactivate_credential(cred.id)
+            vault.log_consent(provider, "disconnected", reason="user_initiated")
+            vault.set_connection_status(provider, connected=False)
+            print(f"  {provider} disconnected. Credentials kept encrypted.")
+        elif choice == "2":
+            confirm = input(f"Permanently delete {provider} credentials? (yes/no): ")
+            if confirm.lower() == "yes":
+                vault.delete_credential(cred.id)
+                vault.log_consent(provider, "disconnected", reason="user_deleted")
+                vault.set_connection_status(provider, connected=False)
+                print(f"  {provider} credentials permanently deleted.")
+            else:
+                print("  Cancelled.")
+        else:
+            print("  Cancelled.")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        vault.lock()
+
+
 def main(argv: list[str] | None = None):
     parser = create_parser()
     args = parser.parse_args(argv)
@@ -829,11 +982,20 @@ def main(argv: list[str] | None = None):
         "insights": cmd_insights,
         "schedule": cmd_schedule,
         "skills": cmd_skills,
+        "connections": cmd_connections,
+        "consent-log": cmd_consent_log,
+        "connect": cmd_connect,
+        "disconnect": cmd_disconnect,
     }
 
     handler = commands.get(args.command)
     if handler:
         handler(args)
+    elif args.command == "vault":
+        if hasattr(args, 'func'):
+            args.func(args)
+        else:
+            print("Usage: homie vault {status}")
     elif args.command == "start":
         cmd_chat(args)
     elif args.command == "init":
