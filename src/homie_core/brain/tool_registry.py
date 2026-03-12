@@ -155,8 +155,35 @@ def _parse_kwargs(args_str: str) -> dict[str, Any]:
     return args
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Compute Levenshtein edit distance between two strings."""
+    if len(a) < len(b):
+        return _levenshtein(b, a)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(min(
+                prev[j + 1] + 1,      # deletion
+                curr[j] + 1,           # insertion
+                prev[j] + (ca != cb),  # substitution
+            ))
+        prev = curr
+    return prev[-1]
+
+
 class ToolRegistry:
-    """Registry of callable tools available to the model."""
+    """Registry of callable tools available to the model.
+
+    Includes fuzzy name matching — when the model hallucinates a
+    close-but-wrong tool name, the registry auto-corrects to the
+    nearest match if edit distance ≤ 2.
+    """
+
+    # Maximum edit distance for fuzzy matching
+    _FUZZY_THRESHOLD = 2
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
@@ -171,26 +198,44 @@ class ToolRegistry:
     def list_tools(self) -> list[Tool]:
         return list(self._tools.values())
 
+    def _fuzzy_match(self, name: str) -> Optional[Tool]:
+        """Find the closest tool name within edit distance threshold."""
+        best_tool: Optional[Tool] = None
+        best_dist = self._FUZZY_THRESHOLD + 1
+        for tool_name, tool in self._tools.items():
+            dist = _levenshtein(name.lower(), tool_name.lower())
+            if dist < best_dist:
+                best_dist = dist
+                best_tool = tool
+        return best_tool if best_dist <= self._FUZZY_THRESHOLD else None
+
     def execute(self, call: ToolCall) -> ToolResult:
-        """Execute a parsed tool call."""
+        """Execute a parsed tool call with fuzzy name matching."""
         tool = self._tools.get(call.name)
         if not tool:
-            return ToolResult(
-                tool_name=call.name, success=False, output="",
-                error=f"Unknown tool: {call.name}",
-            )
+            # Try fuzzy match before giving up
+            tool = self._fuzzy_match(call.name)
+            if tool:
+                resolved_name = tool.name
+            else:
+                return ToolResult(
+                    tool_name=call.name, success=False, output="",
+                    error=f"Unknown tool: {call.name}",
+                )
+        else:
+            resolved_name = call.name
 
         try:
             output = tool.execute(**call.arguments)
-            return ToolResult(tool_name=call.name, success=True, output=str(output))
+            return ToolResult(tool_name=resolved_name, success=True, output=str(output))
         except TypeError as e:
             return ToolResult(
-                tool_name=call.name, success=False, output="",
+                tool_name=resolved_name, success=False, output="",
                 error=f"Invalid arguments: {e}",
             )
         except Exception as e:
             return ToolResult(
-                tool_name=call.name, success=False, output="",
+                tool_name=resolved_name, success=False, output="",
                 error=f"Tool error: {e}",
             )
 

@@ -31,7 +31,13 @@ from homie_core.memory.semantic import SemanticMemory
 from homie_core.intelligence.self_reflection import SelfReflection
 from homie_core.brain.tool_registry import ToolRegistry, parse_tool_calls
 from homie_core.brain.agentic_loop import AgenticLoop, _strip_tool_markers
+from homie_core.brain.persona import select_persona, get_persona_guidance
+from homie_core.brain.iteration_budget import IterationBudget
+from homie_core.brain.context_compressor import ContextCompressor
 from homie_core.memory.learning_pipeline import LearningPipeline
+from homie_core.memory.user_model import UserModelSynthesizer
+from homie_core.security.injection_detector import sanitize_external_content
+from homie_core.security.redact import redact_sensitive_text
 from homie_core.rag.pipeline import RagPipeline
 
 
@@ -266,8 +272,14 @@ class CognitiveArchitecture:
         self._system_prompt = system_prompt
         self._tools = tool_registry
         self._rag = rag_pipeline
-        self._agentic = AgenticLoop(model_engine, tool_registry) if tool_registry else None
+        self._budget = IterationBudget(max_iterations=20)
+        self._agentic = AgenticLoop(model_engine, tool_registry, budget=self._budget) if tool_registry else None
+        self._compressor = ContextCompressor()
         self._learning = LearningPipeline(
+            semantic_memory=semantic_memory,
+            episodic_memory=episodic_memory,
+        )
+        self._user_model = UserModelSynthesizer(
             semantic_memory=semantic_memory,
             episodic_memory=episodic_memory,
         )
@@ -516,7 +528,24 @@ class CognitiveArchitecture:
                     parts.append(topic_section)
                     used += len(topic_section)
 
-        # 8. Response guidance based on user state
+        # 8. User profile (moderate+ queries)
+        if complexity in (QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
+            user_context = self._user_model.get_relevant_context(query, max_chars=400)
+            if user_context:
+                section = f"\n[USER PROFILE]\n{user_context}"
+                if used + len(section) < max_chars - len(query) - 50:
+                    parts.append(section)
+                    used += len(section)
+
+        # 9. Project context (if active project detected)
+        if self._learning.active_project and complexity != QueryComplexity.TRIVIAL:
+            project = self._learning.active_project
+            project_section = f"\n[PROJECT]\nActive project: {project}"
+            if used + len(project_section) < max_chars - len(query) - 50:
+                parts.append(project_section)
+                used += len(project_section)
+
+        # 10. Response guidance based on user state + persona
         guidance = self._generate_response_guidance(complexity, awareness)
         if guidance:
             parts.append(f"\n[GUIDANCE]\n{guidance}")
@@ -529,8 +558,16 @@ class CognitiveArchitecture:
     def _generate_response_guidance(
         self, complexity: str, awareness: SituationalAwareness
     ) -> str:
-        """Generate response style guidance based on user's cognitive state."""
+        """Generate response style guidance based on user's cognitive state and persona."""
         hints = []
+
+        # Specialist persona guidance (replaces simple activity hints)
+        persona_hint = get_persona_guidance(
+            awareness.activity_type,
+            awareness.activity_confidence,
+        )
+        if persona_hint:
+            hints.append(persona_hint)
 
         # Chain-of-thought for complex queries
         if complexity in (QueryComplexity.COMPLEX, QueryComplexity.DEEP):
@@ -553,14 +590,6 @@ class CognitiveArchitecture:
             hints.append("User may be frustrated — be empathetic, offer clear actionable help.")
         elif awareness.arousal == "stressed":
             hints.append("User seems stressed — prioritize the most important point first.")
-
-        # Adapt to activity
-        if awareness.activity_type == "coding":
-            hints.append("User is coding — prefer code examples over explanations.")
-        elif awareness.activity_type == "writing":
-            hints.append("User is writing — match their tone and be concise.")
-        elif awareness.activity_type == "research":
-            hints.append("User is researching — provide sources and structured info.")
 
         # Adapt to time/energy
         if awareness.rhythmic_score < 0.3:
@@ -620,7 +649,19 @@ class CognitiveArchitecture:
     # ------------------------------------------------------------------
 
     def _prepare_prompt(self, user_input: str):
-        """Run stages 1-5 and return (prompt, budget_cfg, adjustments)."""
+        """Run stages 1-5 and return (prompt, budget_cfg, adjustments).
+
+        Enhanced with:
+        - Context compression for long conversations
+        - Injection detection on external context (RAG documents)
+        - Secret redaction on tool-generated content
+        """
+        # Auto-compress conversation if it's getting too long
+        conversation = self._wm.get_conversation()
+        if self._compressor.needs_compression(conversation):
+            compressed = self._compressor.compress(conversation)
+            self._wm._conversation = compressed  # Replace in-place
+
         awareness = self._perceive()
         complexity = self._classify(user_input, awareness)
 
@@ -629,9 +670,17 @@ class CognitiveArchitecture:
         episodes = self._retrieve_relevant_episodes(user_input, budget=budget_cfg["prompt_chars"] // 6)
 
         # RAG: retrieve relevant documents for moderate+ queries
+        # Apply injection detection on retrieved documents
         documents_block = ""
         if complexity in (QueryComplexity.MODERATE, QueryComplexity.COMPLEX, QueryComplexity.DEEP):
-            documents_block = self._retrieve_documents(user_input, budget=budget_cfg["prompt_chars"] // 3)
+            raw_docs = self._retrieve_documents(user_input, budget=budget_cfg["prompt_chars"] // 3)
+            if raw_docs:
+                safe_docs, scan_result = sanitize_external_content(raw_docs)
+                if scan_result.threat_level in ("high", "critical"):
+                    # Block suspicious documents entirely
+                    documents_block = ""
+                else:
+                    documents_block = safe_docs
 
         prompt = self._build_cognitive_prompt(user_input, complexity, awareness, facts, episodes, documents_block)
 
