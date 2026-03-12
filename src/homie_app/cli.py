@@ -104,6 +104,14 @@ def create_parser() -> argparse.ArgumentParser:
     sub_disconnect.add_argument("provider", help="Provider name")
     sub_disconnect.set_defaults(func=cmd_disconnect)
 
+    # homie email
+    email_parser = subparsers.add_parser("email", help="Email management")
+    email_sub = email_parser.add_subparsers(dest="email_command")
+    email_summary_parser = email_sub.add_parser("summary", help="Email summary")
+    email_summary_parser.add_argument("--days", type=int, default=1, help="Days to summarize")
+    email_sub.add_parser("sync", help="Force sync now")
+    email_sub.add_parser("config", help="Show email settings")
+
     return parser
 
 
@@ -604,7 +612,18 @@ def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
 
     if cmd.startswith("/connect "):
         provider = command[9:].strip()
-        return f"Connecting to {provider}... OAuth integration coming in email/social sub-projects."
+        if provider == "gmail":
+            return "Use the CLI command: homie connect gmail"
+        return f"Provider '{provider}' not yet supported. Available: gmail"
+
+    elif cmd.startswith("/email"):
+        parts = cmd.split()
+        if len(parts) > 1 and parts[1] == "summary":
+            return "Use the CLI command: homie email summary"
+        elif len(parts) > 1 and parts[1] == "sync":
+            return "Use the CLI command: homie email sync"
+        else:
+            return "Email commands: /email summary, /email sync, or use CLI: homie email {summary|sync|config}"
 
     if cmd.startswith("/disconnect "):
         provider = command[12:].strip()
@@ -625,6 +644,7 @@ def _handle_meta_command(command: str, brain, wm, sm, em, cfg) -> str | None:
             "  /consent-log — Show consent audit trail (e.g., /consent-log gmail)\n"
             "  /vault       — Show vault status\n"
             "  /connect     — Connect a provider (e.g., /connect gmail)\n"
+            "  /email       — Email commands (summary, sync)\n"
             "  /disconnect  — Disconnect a provider (e.g., /disconnect gmail)\n"
             "  /clear       — Clear conversation (fresh start)\n"
             "  /help        — Show this help\n"
@@ -970,10 +990,180 @@ def cmd_vault_status(args, config=None):
 
 
 def cmd_connect(args, config=None):
-    """Stub for provider connection — full OAuth flow added in sub-project 1."""
+    """Connect a provider via OAuth or API key."""
+    from homie_core.config import load_config
+    cfg = config or load_config()
     provider = args.provider
-    print(f"Connecting to {provider}...")
-    print("OAuth integration not yet available. Coming in email/social sub-projects.")
+    if provider != "gmail":
+        print(f"Provider '{provider}' not yet supported. Available: gmail")
+        return
+
+    from homie_core.email.oauth import GmailOAuth, GMAIL_SCOPES
+    from homie_core.vault.secure_vault import SecureVault
+    import time
+
+    storage = Path(cfg.storage.path)
+    vault = SecureVault(storage_dir=storage / "vault")
+    vault.unlock()
+
+    # Check for existing OAuth client credentials
+    client_cred = vault.get_credential("gmail", account_id="oauth_client")
+    if client_cred:
+        client_id = client_cred.access_token
+        client_secret = client_cred.refresh_token
+    else:
+        print("\nGmail OAuth Setup")
+        print("=" * 40)
+        print("You need a Google Cloud OAuth client ID.")
+        print("1. Go to https://console.cloud.google.com/apis/credentials")
+        print("2. Create an OAuth 2.0 Client ID (Desktop app)")
+        print("3. Enable the Gmail API\n")
+        client_id = input("Client ID: ").strip()
+        client_secret = input("Client Secret: ").strip()
+        if not client_id or not client_secret:
+            print("Cancelled.")
+            vault.lock()
+            return
+
+        vault.store_credential(
+            provider="gmail", account_id="oauth_client",
+            token_type="oauth_client",
+            access_token=client_id,
+            refresh_token=client_secret,
+            scopes=GMAIL_SCOPES,
+        )
+
+    oauth = GmailOAuth(client_id=client_id, client_secret=client_secret)
+
+    print("\nOpening browser for Google authorization...")
+    auth_url = oauth.get_auth_url(use_local_server=True)
+
+    import webbrowser
+    webbrowser.open(auth_url)
+
+    code = oauth.wait_for_redirect(timeout=120)
+
+    if not code:
+        print("\nLocal redirect failed. Manual authorization:")
+        manual_url = oauth.get_auth_url(use_local_server=False)
+        print(f"\nVisit this URL:\n{manual_url}\n")
+        code = input("Paste the authorization code: ").strip()
+        if not code:
+            print("Cancelled.")
+            vault.lock()
+            return
+        tokens = oauth.exchange(code, use_local_server=False)
+    else:
+        tokens = oauth.exchange(code, use_local_server=True)
+
+    # Get profile to determine account email
+    from types import SimpleNamespace
+    from homie_core.email.gmail_provider import GmailProvider
+    provider_instance = GmailProvider(account_id="pending")
+    temp_cred = SimpleNamespace(
+        access_token=tokens["access_token"],
+        refresh_token=tokens.get("refresh_token"),
+        provider="gmail", account_id="pending",
+    )
+    provider_instance.authenticate(temp_cred, client_id=client_id, client_secret=client_secret)
+    profile = provider_instance.get_profile()
+    email_addr = profile["emailAddress"]
+
+    vault.store_credential(
+        provider="gmail", account_id=email_addr,
+        token_type="oauth2",
+        access_token=tokens["access_token"],
+        refresh_token=tokens.get("refresh_token", ""),
+        scopes=GMAIL_SCOPES,
+        expires_at=time.time() + tokens.get("expires_in", 3600),
+    )
+
+    vault.set_connection_status("gmail", connected=True, label=email_addr)
+    vault.log_consent("gmail", "connected", scopes=GMAIL_SCOPES)
+
+    print(f"\nConnected: {email_addr}")
+    print("Run `homie email sync` to fetch recent emails, or they'll sync automatically.")
+    vault.lock()
+
+
+def cmd_email_summary(args, config=None):
+    """Print email summary."""
+    from homie_core.config import load_config
+    from homie_core.email import EmailService
+    from homie_core.vault.secure_vault import SecureVault
+    from homie_core.vault.schema import create_cache_db
+
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path)
+    vault = SecureVault(storage_dir=storage / "vault")
+    vault.unlock()
+    cache_conn = create_cache_db(storage / "cache.db")
+
+    service = EmailService(vault=vault, cache_conn=cache_conn)
+    accounts = service.initialize()
+    if not accounts:
+        print("No email accounts connected. Run: homie connect gmail")
+        vault.lock()
+        return
+
+    summary = service.get_summary(days=int(getattr(args, "days", 1)))
+    print(f"\nEmail Summary (last {getattr(args, 'days', 1)} day(s)):")
+    print(f"  Total: {summary['total']}")
+    print(f"  Unread: {summary['unread']}")
+    if summary['high_priority']:
+        print(f"\n  High Priority:")
+        for item in summary['high_priority'][:5]:
+            print(f"    - {item['sender']}: {item['subject']}")
+    vault.lock()
+
+
+def cmd_email_sync(args, config=None):
+    """Force immediate email sync."""
+    from homie_core.config import load_config
+    from homie_core.email import EmailService
+    from homie_core.vault.secure_vault import SecureVault
+    from homie_core.vault.schema import create_cache_db
+
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path)
+    vault = SecureVault(storage_dir=storage / "vault")
+    vault.unlock()
+    cache_conn = create_cache_db(storage / "cache.db")
+
+    service = EmailService(vault=vault, cache_conn=cache_conn)
+    accounts = service.initialize()
+    if not accounts:
+        print("No email accounts connected. Run: homie connect gmail")
+        vault.lock()
+        return
+
+    print("Syncing...")
+    result = service.sync_tick()
+    print(result)
+    vault.lock()
+
+
+def cmd_email_config(args, config=None):
+    """Show email sync configuration."""
+    from homie_core.config import load_config
+    from homie_core.vault.schema import create_cache_db
+
+    cfg = config or load_config()
+    storage = Path(cfg.storage.path)
+    cache_conn = create_cache_db(storage / "cache.db")
+
+    rows = cache_conn.execute("SELECT * FROM email_config").fetchall()
+    if not rows:
+        print("No email configuration found. Defaults apply (5 min sync, high-priority notifications).")
+        return
+
+    for row in rows:
+        print(f"\nAccount: {row[0]}")
+        print(f"  Check interval: {row[1]}s")
+        print(f"  Notify priority: {row[2]}")
+        print(f"  Quiet hours: {row[3] or 'none'}-{row[4] or 'none'}")
+        print(f"  Auto-trash spam: {'yes' if row[5] else 'no'}")
+    cache_conn.close()
 
 
 def cmd_disconnect(args, config=None):
@@ -1036,6 +1226,11 @@ def main(argv: list[str] | None = None):
         "consent-log": cmd_consent_log,
         "connect": cmd_connect,
         "disconnect": cmd_disconnect,
+        "email": lambda args, cfg=None: {
+            "summary": cmd_email_summary,
+            "sync": cmd_email_sync,
+            "config": cmd_email_config,
+        }.get(args.email_command, lambda a, c=None: print("Usage: homie email {summary|sync|config}"))(args, cfg),
     }
 
     handler = commands.get(args.command)
