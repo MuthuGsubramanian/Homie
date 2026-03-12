@@ -23,7 +23,7 @@ from homie_core.brain.orchestrator import BrainOrchestrator
 from homie_core.rag.pipeline import RagPipeline
 from homie_app.hotkey import HotkeyListener
 from homie_app.overlay import OverlayPopup
-from homie_app.prompts.system import SYSTEM_PROMPT
+from homie_app.prompts.system import build_system_prompt
 
 
 class HomieDaemon:
@@ -257,7 +257,11 @@ class HomieDaemon:
                 tool_registry=tool_registry,
                 rag_pipeline=self._rag,
             )
-            self._brain.set_system_prompt(SYSTEM_PROMPT)
+            # Dynamic system prompt with user name and time awareness
+            system_prompt = build_system_prompt(
+                user_name=self._config.user_name or "Master",
+            )
+            self._brain.set_system_prompt(system_prompt)
         return True
 
     def _on_user_query(self, text: str) -> str:

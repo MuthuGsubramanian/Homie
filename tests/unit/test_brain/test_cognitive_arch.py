@@ -356,3 +356,105 @@ class TestResponseGuidance:
         arch.process("what does this function do?")
         prompt = engine.generate.call_args[0][0]
         assert "brief" in prompt.lower() or "precise" in prompt.lower()
+
+    def test_chain_of_thought_for_complex_queries(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        arch.process(
+            "explain the difference between async and sync programming, "
+            "compare their trade-offs for web servers, and help me understand "
+            "which approach would be better for high concurrency"
+        )
+        prompt = engine.generate.call_args[0][0]
+        assert "step by step" in prompt.lower() or "think" in prompt.lower()
+
+    def test_long_conversation_gets_continuity_hint(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        # Simulate a long conversation
+        for i in range(8):
+            wm.add_message("user", f"question {i}")
+            wm.add_message("assistant", f"answer {i}")
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        arch.process("what about the performance aspect?")
+        prompt = engine.generate.call_args[0][0]
+        assert "long conversation" in prompt.lower() or "earlier" in prompt.lower()
+
+
+# -----------------------------------------------------------------------
+# Conversation meta-tracking
+# -----------------------------------------------------------------------
+
+class TestConversationMetaTracking:
+    def test_topic_tracking(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        arch.process("tell me about Python web frameworks")
+        arch.process("what about Django vs Flask?")
+        assert len(arch._topic_history) == 2
+
+    def test_engagement_tracking(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        # Short message = lower engagement
+        arch._track_conversation_meta("ok")
+        low = arch._user_engagement
+        # Long detailed message = higher engagement
+        arch._track_conversation_meta(
+            "Can you explain in detail how the neural network architecture "
+            "works for transformer models? I'm particularly interested in "
+            "the attention mechanism and positional encoding."
+        )
+        high = arch._user_engagement
+        assert high > low
+
+    def test_topic_flow_in_prompt(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        arch.process("tell me about Python")
+        arch.process("what about machine learning?")
+        # Third message should have topic flow in prompt
+        arch.process("how do I implement a neural network?")
+        prompt = engine.generate.call_args[0][0]
+        assert "TOPIC FLOW" in prompt
+
+
+# -----------------------------------------------------------------------
+# Smart conversation compression
+# -----------------------------------------------------------------------
+
+class TestSmartConversationCompression:
+    def test_older_messages_summarized_for_complex_queries(self):
+        engine = MagicMock()
+        engine.generate.return_value = "response"
+        wm = WorkingMemory()
+        # Add many turns
+        for i in range(12):
+            wm.add_message("user", f"Tell me about topic {i} with details about architecture")
+            wm.add_message("assistant", f"Here's info about topic {i}")
+        arch = CognitiveArchitecture(
+            model_engine=engine, working_memory=wm, system_prompt="Test",
+        )
+        # Complex query triggers summary of older messages
+        arch.process("Explain the trade-offs between all the approaches we discussed?")
+        prompt = engine.generate.call_args[0][0]
+        assert "Earlier:" in prompt or "CONVERSATION" in prompt
