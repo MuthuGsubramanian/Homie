@@ -1,8 +1,7 @@
 """Tests for email organizer — labeling, archiving, financial extraction."""
 from __future__ import annotations
 
-import re
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 from homie_core.email.organizer import EmailOrganizer
 from homie_core.email.models import EmailMessage, EmailSyncConfig
