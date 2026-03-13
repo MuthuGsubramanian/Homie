@@ -1,0 +1,81 @@
+---
+interface Props {
+  activePage?: string;
+}
+const { activePage = 'home' } = Astro.props;
+const links = [
+  { name: 'HOME', href: '/', id: 'home' },
+  { name: 'ABOUT', href: '/about', id: 'about' },
+  { name: 'DOWNLOAD', href: '/download', id: 'download' },
+];
+---
+
+<nav class="flex justify-between items-center px-6 py-4 border-b" style="border-color: var(--border-gold);">
+  <a href="/" class="flex items-center gap-3">
+    <div class="reactor-glow" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent-gold); display: flex; align-items: center; justify-content: center;">
+      <div style="width: 10px; height: 10px; border-radius: 50%; background: var(--accent-gold); box-shadow: 0 0 8px var(--accent-gold);"></div>
+    </div>
+    <span style="font-family: var(--font-pixel); font-size: 14px; letter-spacing: 3px; color: var(--accent-gold);">HOMIE</span>
+  </a>
+
+  <div class="hidden md:flex gap-5">
+    {links.map(link => (
+      <a
+        href={link.href}
+        class="nav-link"
+        style={`font-family: var(--font-retro); font-size: 15px; letter-spacing: 2px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-dim)'};`}
+      >
+        {link.name}
+      </a>
+    ))}
+  </div>
+
+  <button id="mobile-menu-btn" class="md:hidden" style="font-family: var(--font-pixel); font-size: 16px; color: var(--accent-gold); background: none; border: none; cursor: pointer;">
+    ≡
+  </button>
+</nav>
+
+<div id="mobile-menu" class="fixed inset-0 z-50 hidden" style="background: var(--bg-primary);">
+  <div class="flex justify-end p-6">
+    <button id="mobile-menu-close" style="font-family: var(--font-pixel); font-size: 16px; color: var(--accent-gold); background: none; border: none; cursor: pointer;">✕</button>
+  </div>
+  <div class="flex flex-col items-center justify-center gap-8" style="min-height: 60vh;">
+    {links.map(link => (
+      <a
+        href={link.href}
+        style={`font-family: var(--font-pixel); font-size: 14px; letter-spacing: 4px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-muted)'};`}
+      >
+        {link.name}
+      </a>
+    ))}
+  </div>
+</div>
+
+<script>
+  const btn = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+  const close = document.getElementById('mobile-menu-close');
+  btn?.addEventListener('click', () => menu?.classList.remove('hidden'));
+  close?.addEventListener('click', () => menu?.classList.add('hidden'));
+</script>
+
+<style>
+  .nav-link {
+    position: relative;
+  }
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--accent-gold);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.2s;
+  }
+  .nav-link:hover::after {
+    transform: scaleX(1);
+  }
+</style>

@@ -1,0 +1,96 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const missions = [
+  { color: 'var(--accent-gold)', title: 'PRIVACY IS NOT A FEATURE', desc: "It's the foundation. Your data stays on your machine, encrypted in a vault even we can't open." },
+  { color: 'var(--accent-green)', title: 'LOCAL MEANS LOCAL', desc: 'Your LLM runs on your GPU. Your voice stays on your mic. Zero cloud calls required.' },
+  { color: 'var(--accent-blue)', title: 'OPEN SOURCE, OPEN HEART', desc: 'MPL-2.0 licensed. Read the code, fork the code, make it yours. No vendor lock-in.' },
+  { color: 'var(--accent-purple)', title: 'YOUR AI SHOULD KNOW YOU', desc: 'Not to exploit you — to help you. Homie learns your patterns, anticipates your needs, and never shares a byte.' },
+];
+
+const inventory = [
+  { name: 'Python', label: 'CORE', color: 'var(--accent-gold)' },
+  { name: 'llama.cpp', label: 'ENGINE', color: 'var(--accent-green)' },
+  { name: 'SQLite', label: 'STORAGE', color: 'var(--accent-blue)' },
+  { name: 'ChromaDB', label: 'VECTORS', color: 'var(--accent-purple)' },
+  { name: 'Whisper', label: 'VOICE', color: 'var(--accent-red)' },
+  { name: 'AES-256', label: 'VAULT', color: 'var(--accent-orange)' },
+];
+---
+
+<BaseLayout
+  title="About — Hey Homie"
+  description="The origin story, mission, and team behind Homie AI."
+  activePage="about"
+>
+  <section class="pt-12 pb-8 px-6 text-center">
+    <p class="status-line">■ DOSSIER ACCESS GRANTED</p>
+    <h1 class="page-title">ABOUT HOMIE</h1>
+    <p class="page-subtitle">ORIGIN STORY • MISSION • CREATOR</p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-gold);">ORIGIN STORY</p>
+    <p style="font-family: var(--font-retro); font-size: 17px; color: var(--text-body); line-height: 2; letter-spacing: 0.5px;">
+      Every hero needs a companion. Not one that lives in some corporate data center, harvesting your habits and selling your secrets. One that lives with you. On your machine. Under your rules.
+    </p>
+    <p style="font-family: var(--font-retro); font-size: 17px; color: var(--text-muted); line-height: 2; letter-spacing: 0.5px; margin-top: 16px;">
+      Homie was born from a simple idea: what if your AI assistant was actually <span style="color: var(--accent-gold);">yours</span>? No subscriptions. No cloud dependencies. No "we updated our privacy policy" emails. Just a smart, local companion that gets better the more you use it.
+    </p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-blue);">MISSION PARAMETERS</p>
+    <div class="flex flex-col gap-4">
+      {missions.map(m => (
+        <div class="flex gap-3 items-start">
+          <div style={`min-width: 8px; height: 8px; margin-top: 6px; background: ${m.color};`}></div>
+          <div>
+            <div style="font-family: var(--font-retro); font-size: 16px; color: var(--text-primary); letter-spacing: 2px; margin-bottom: 4px;">{m.title}</div>
+            <div style="font-family: var(--font-retro); font-size: 15px; color: var(--text-dim); line-height: 1.6;">{m.desc}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-purple);">CREATOR PROFILE</p>
+    <div class="skill-card" style="border-color: var(--border-gold); background: var(--bg-card);">
+      <div class="flex justify-between items-center mb-3">
+        <div>
+          <div style="font-family: var(--font-pixel); font-size: 14px; color: var(--accent-gold); letter-spacing: 2px;">MSG</div>
+          <div style="font-family: var(--font-retro); font-size: 14px; color: var(--text-dim); letter-spacing: 1px; margin-top: 4px;">MUTHU G. SUBRAMANIAN</div>
+        </div>
+        <div style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-green); letter-spacing: 2px; border: 1px solid rgba(46,204,113,0.3); padding: 3px 8px;">ONLINE</div>
+      </div>
+      <p style="font-family: var(--font-retro); font-size: 16px; color: var(--text-muted); line-height: 1.8;">
+        Builder of things that respect people. Believes AI should empower individuals, not corporations. Made Homie because he wanted an AI assistant he could actually trust.
+      </p>
+      <div class="flex gap-4 mt-4">
+        <a href="https://github.com/MSG-88" target="_blank" rel="noopener" style="font-family: var(--font-retro); font-size: 15px; color: var(--text-faint); letter-spacing: 1px;">GITHUB ↗</a>
+        <a href="mailto:muthu.g.subramanian@outlook.com" style="font-family: var(--font-retro); font-size: 15px; color: var(--text-faint); letter-spacing: 1px;">EMAIL ↗</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-red);">INVENTORY</p>
+    <div class="grid grid-cols-3 gap-2">
+      {inventory.map(item => (
+        <div style="border: 1px solid var(--border-subtle); padding: 10px; text-align: center;">
+          <div style={`font-family: var(--font-retro); font-size: 16px; color: ${item.color}; letter-spacing: 1px;`}>{item.name}</div>
+          <div style="font-family: var(--font-pixel); font-size: 7px; color: var(--text-faint); margin-top: 3px;">{item.label}</div>
+        </div>
+      ))}
+    </div>
+  </section>
+</BaseLayout>

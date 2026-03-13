@@ -1,0 +1,157 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const specs = [
+  { label: 'CPU', value: 'Any modern x86/ARM', note: '', noteColor: '' },
+  { label: 'RAM', value: '8 GB minimum', note: '', noteColor: '' },
+  { label: 'GPU', value: 'Optional (CUDA/Metal)', note: '+10x speed boost', noteColor: 'var(--accent-green)' },
+  { label: 'DISK', value: '2 GB + model size', note: '', noteColor: '' },
+  { label: 'PYTHON', value: '3.11 or newer', note: '', noteColor: '' },
+  { label: 'INTERNET', value: 'Only for install', note: 'then fully offline', noteColor: 'var(--accent-gold)' },
+];
+
+const modules = [
+  { name: 'Voice', color: 'var(--accent-gold)', cmd: 'pip install homie-ai[voice]', size: '~2 GB' },
+  { name: 'Email', color: 'var(--accent-green)', cmd: 'pip install homie-ai[email]', size: '~5 MB' },
+  { name: 'Neural', color: 'var(--accent-blue)', cmd: 'pip install homie-ai[neural]', size: '~50 MB' },
+];
+---
+
+<BaseLayout
+  title="Download — Hey Homie"
+  description="Install Homie AI on Windows, Linux, or macOS. Fully local, privacy-first AI assistant."
+  activePage="download"
+>
+  <section class="pt-12 pb-8 px-6 text-center">
+    <p class="status-line">■ DEPLOYMENT READY</p>
+    <h1 class="page-title">SUIT UP</h1>
+    <p class="page-subtitle">SELECT YOUR PLATFORM • INSTALL • LAUNCH</p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 text-center max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-gold);">QUICK DEPLOY</p>
+    <div style="background: #111; border: 1px solid var(--border-gold); padding: 16px 20px; text-align: left; position: relative;">
+      <div style="font-family: var(--font-pixel); font-size: 8px; color: var(--text-faint); letter-spacing: 2px; margin-bottom: 8px;">TERMINAL</div>
+      <div style="font-family: var(--font-retro); font-size: 18px; color: var(--accent-green);">
+        <span style="color: var(--text-dim);">$</span> pip install homie-ai
+      </div>
+      <button
+        id="copy-btn"
+        style="position: absolute; top: 16px; right: 16px; font-family: var(--font-pixel); font-size: 8px; color: var(--text-faint); letter-spacing: 1px; border: 1px solid var(--text-ghost); padding: 2px 8px; background: none; cursor: pointer;"
+      >COPY</button>
+    </div>
+    <p style="font-family: var(--font-retro); font-size: 14px; color: var(--text-faint); margin-top: 10px; letter-spacing: 1px;">
+      Works on all platforms. Requires Python 3.11+
+    </p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-blue);">PLATFORM SELECT</p>
+    <div class="grid grid-cols-3 gap-3">
+      <div id="platform-windows" style="border: 1px solid var(--border-subtle); padding: 20px 12px; text-align: center;">
+        <div style="font-size: 22px; margin-bottom: 8px;">⊞</div>
+        <div class="platform-name" style="font-family: var(--font-retro); font-size: 15px; color: var(--text-muted); letter-spacing: 2px;">WINDOWS</div>
+        <div class="platform-detect" style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-green); margin-top: 6px; letter-spacing: 1px; visibility: hidden;">DETECTED ✓</div>
+        <div style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint); margin-top: 8px;">Win 10/11</div>
+      </div>
+      <div id="platform-linux" style="border: 1px solid var(--border-subtle); padding: 20px 12px; text-align: center;">
+        <div style="font-size: 22px; margin-bottom: 8px;">🐧</div>
+        <div class="platform-name" style="font-family: var(--font-retro); font-size: 15px; color: var(--text-muted); letter-spacing: 2px;">LINUX</div>
+        <div class="platform-detect" style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-green); margin-top: 6px; letter-spacing: 1px; visibility: hidden;">DETECTED ✓</div>
+        <div style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint); margin-top: 8px;">Ubuntu/Fedora/Arch</div>
+      </div>
+      <div id="platform-macos" style="border: 1px solid var(--border-subtle); padding: 20px 12px; text-align: center;">
+        <div style="font-size: 22px; margin-bottom: 8px;">🍎</div>
+        <div class="platform-name" style="font-family: var(--font-retro); font-size: 15px; color: var(--text-muted); letter-spacing: 2px;">MACOS</div>
+        <div class="platform-detect" style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-green); margin-top: 6px; letter-spacing: 1px; visibility: hidden;">DETECTED ✓</div>
+        <div style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint); margin-top: 8px;">13+ (Ventura)</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-purple);">MINIMUM SPECS</p>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {specs.map(s => (
+        <div style="border: 1px solid var(--border-subtle); padding: 14px;">
+          <div style="font-family: var(--font-pixel); font-size: 8px; color: var(--text-faint); letter-spacing: 2px; margin-bottom: 6px;">{s.label}</div>
+          <div style="font-family: var(--font-retro); font-size: 15px; color: var(--text-body);">{s.value}</div>
+          {s.note && <div style={`font-family: var(--font-retro); font-size: 13px; color: ${s.noteColor}; margin-top: 3px;`}>{s.note}</div>}
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6 max-w-2xl mx-auto">
+    <p class="section-label" style="color: var(--accent-red);">OPTIONAL MODULES</p>
+    <div class="flex flex-col gap-2">
+      {modules.map(m => (
+        <div class="flex justify-between items-center" style="border: 1px solid var(--border-subtle); padding: 10px 14px;">
+          <div>
+            <span style={`font-family: var(--font-retro); font-size: 15px; color: ${m.color}; letter-spacing: 1px;`}>{m.name}</span>
+            <span style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint); margin-left: 8px;">{m.cmd}</span>
+          </div>
+          <span style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint);">{m.size}</span>
+        </div>
+      ))}
+      <div class="flex justify-between items-center" style="border: 1px solid var(--border-gold); padding: 10px 14px; background: var(--bg-card);">
+        <div>
+          <span style="font-family: var(--font-retro); font-size: 15px; color: var(--accent-gold); letter-spacing: 1px;">Everything</span>
+          <span style="font-family: var(--font-retro); font-size: 13px; color: var(--text-faint); margin-left: 8px;">pip install homie-ai[all]</span>
+        </div>
+        <span style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-gold);">FULL SUIT</span>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  // Copy button
+  const copyBtn = document.getElementById('copy-btn');
+  copyBtn?.addEventListener('click', () => {
+    navigator.clipboard.writeText('pip install homie-ai');
+    if (copyBtn) {
+      copyBtn.textContent = 'COPIED ✓';
+      setTimeout(() => { copyBtn.textContent = 'COPY'; }, 2000);
+    }
+  });
+
+  // Platform detection
+  function detectPlatform(): string {
+    const uad = (navigator as any).userAgentData;
+    if (uad?.platform) {
+      const p = uad.platform.toLowerCase();
+      if (p.includes('win')) return 'windows';
+      if (p.includes('mac')) return 'macos';
+      if (p.includes('linux')) return 'linux';
+    }
+    const p = navigator.platform.toLowerCase();
+    if (p.includes('win')) return 'windows';
+    if (p.includes('mac')) return 'macos';
+    if (p.includes('linux')) return 'linux';
+    return 'unknown';
+  }
+
+  const platform = detectPlatform();
+  const cardMap: Record<string, string> = { windows: 'platform-windows', macos: 'platform-macos', linux: 'platform-linux' };
+  const cardId = cardMap[platform];
+  if (cardId) {
+    const card = document.getElementById(cardId);
+    if (card) {
+      card.style.borderColor = 'rgba(241, 196, 15, 0.4)';
+      card.style.borderWidth = '2px';
+      const detect = card.querySelector('.platform-detect') as HTMLElement;
+      if (detect) detect.style.visibility = 'visible';
+      const name = card.querySelector('.platform-name') as HTMLElement;
+      if (name) name.style.color = '#f1c40f';
+    }
+  }
+</script>

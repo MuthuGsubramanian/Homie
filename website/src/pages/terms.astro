@@ -1,0 +1,119 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Terms of Service — Hey Homie"
+  description="Terms of Service for Homie AI, the fully local privacy-first AI assistant."
+  activePage=""
+>
+  <section class="pt-12 pb-8 px-6 text-center">
+    <p class="status-line">■ LEGAL PROTOCOLS ACTIVE</p>
+    <h1 class="page-title">TERMS OF SERVICE</h1>
+    <p class="page-subtitle">EFFECTIVE: MARCH 2026</p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <article class="py-10 px-6 max-w-3xl mx-auto legal-content">
+    <section class="legal-section">
+      <h2>1. Acceptance of Terms</h2>
+      <p>By downloading, installing, or using Homie AI ("Homie," "the Software"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Software.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>2. License</h2>
+      <p>Homie is open-source software released under the <strong>Mozilla Public License 2.0 (MPL-2.0)</strong>. In plain terms:</p>
+      <ul>
+        <li>You may use, copy, modify, and distribute Homie freely.</li>
+        <li>If you modify files covered by the MPL, those modifications must remain open source under the same license.</li>
+        <li>You may combine Homie with proprietary software in a larger project — the MPL only applies to the Homie files themselves.</li>
+        <li>The full license text is available at <a href="https://www.mozilla.org/en-US/MPL/2.0/" target="_blank" rel="noopener">mozilla.org/MPL/2.0</a>.</li>
+      </ul>
+    </section>
+
+    <section class="legal-section">
+      <h2>3. What Homie Is</h2>
+      <p>Homie is local software that runs entirely on your machine. It is not a cloud service, not a SaaS product, and not a hosted platform. We do not operate servers that process your data, and we do not host, control, or monitor your Homie instance in any way.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>4. Your Responsibilities</h2>
+      <p>You are responsible for:</p>
+      <ul>
+        <li>Your hardware and its maintenance.</li>
+        <li>Your data and any backups thereof.</li>
+        <li>The language models you choose to download and run, including compliance with their respective licenses (e.g., Llama Community License, Mistral License, Qwen License).</li>
+        <li>Any external services you connect to Homie (Gmail, social media platforms, etc.).</li>
+      </ul>
+    </section>
+
+    <section class="legal-section">
+      <h2>5. No Warranty</h2>
+      <p>Homie is currently in <strong>alpha</strong> and is provided "as-is" without warranties of any kind, whether express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. We do not guarantee that Homie will be error-free, uninterrupted, or suitable for any specific use case.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>6. Third-Party Models and Software</h2>
+      <p>Language models, voice models, and other AI components that you download through or use with Homie are third-party software with their own licenses and terms. We do not create, control, or take responsibility for the outputs of these models.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>7. Optional Cloud Connections</h2>
+      <p>If you choose to connect external services (such as Gmail, social media platforms, or other APIs), those providers' terms of service and privacy policies apply to your use of those services. Homie facilitates the connection on your local machine — we do not act as an intermediary, and no data flows through our servers.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>8. Limitation of Liability</h2>
+      <p>To the maximum extent permitted by applicable law, Hey Homie and its contributors shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of data, loss of profits, or damages arising from the use or inability to use the Software.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>9. Changes to These Terms</h2>
+      <p>We may update these Terms from time to time. Changes will be posted on this page with an updated effective date. We will not send you emails about terms changes — because we don't have your email.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>10. Contact</h2>
+      <p>For questions about these terms, contact: <a href="mailto:muthu.g.subramanian@outlook.com">muthu.g.subramanian@outlook.com</a></p>
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  .legal-content {
+    font-family: var(--font-legal);
+    color: var(--text-body);
+    line-height: 1.8;
+  }
+  .legal-section {
+    margin-bottom: 32px;
+  }
+  .legal-section h2 {
+    font-family: var(--font-retro);
+    font-size: 18px;
+    color: var(--accent-gold);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .legal-section p {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .legal-section ul {
+    padding-left: 20px;
+    margin-bottom: 12px;
+  }
+  .legal-section li {
+    font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .legal-section a {
+    color: var(--accent-gold);
+    text-decoration: underline;
+  }
+  .legal-section strong {
+    color: var(--text-primary);
+  }
+</style>
