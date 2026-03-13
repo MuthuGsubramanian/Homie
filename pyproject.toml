@@ -32,6 +32,8 @@ dependencies = [
     "cryptography>=43.0",
     "keyring>=25.0",
     "feedparser>=6.0",
+    "prompt-toolkit>=3.0",
+    "requests>=2.31",
 ]
 
 [project.urls]
