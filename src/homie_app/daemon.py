@@ -183,6 +183,53 @@ class HomieDaemon:
         except Exception as e:
             print(f"  Social: not available ({e})")
 
+        # Initialize web analyzer (shared utility)
+        self._web_analyzer = None
+        try:
+            from homie_core.web.analyzer import WebAnalyzer
+            self._web_analyzer = WebAnalyzer()
+            print("  Web Analyzer: active")
+        except Exception as e:
+            print(f"  Web Analyzer: not available ({e})")
+
+        # Initialize social media service
+        self._social_media_service = None
+        try:
+            from homie_core.social_media import SocialMediaService
+            self._social_media_service = SocialMediaService(
+                vault=self._vault, working_memory=self._working_memory,
+            )
+            platforms = self._social_media_service.initialize()
+            if platforms:
+                self._vault_sync.register_callback(
+                    "social_media", self._social_media_service.sync_tick,
+                )
+                print(f"  Social Media: {', '.join(platforms)}")
+            else:
+                print("  Social Media: no platforms connected")
+        except Exception as e:
+            print(f"  Social Media: not available ({e})")
+
+        # Initialize browser history service
+        self._browser_service = None
+        try:
+            from homie_core.browser import BrowserHistoryService
+            self._browser_service = BrowserHistoryService(
+                vault=self._vault,
+                working_memory=self._working_memory,
+                web_analyzer=self._web_analyzer,
+            )
+            status = self._browser_service.initialize()
+            if status.get("enabled"):
+                self._vault_sync.register_callback(
+                    "browser", self._browser_service.sync_tick,
+                )
+                print(f"  Browser History: {', '.join(status.get('browsers', []))}")
+            else:
+                print("  Browser History: disabled (run 'homie browser enable')")
+        except Exception as e:
+            print(f"  Browser History: not available ({e})")
+
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
 
@@ -371,6 +418,16 @@ class HomieDaemon:
             if self._social_service:
                 from homie_core.social.tools import register_social_tools
                 register_social_tools(tool_registry, self._social_service)
+
+            if self._web_analyzer:
+                from homie_core.web.tools import register_web_tools
+                register_web_tools(tool_registry, self._web_analyzer)
+            if self._social_media_service:
+                from homie_core.social_media.tools import register_social_media_tools
+                register_social_media_tools(tool_registry, self._social_media_service)
+            if self._browser_service:
+                from homie_core.browser.tools import register_browser_tools
+                register_browser_tools(tool_registry, self._browser_service)
 
             self._brain = BrainOrchestrator(
                 model_engine=self._engine,
