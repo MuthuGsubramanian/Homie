@@ -1,76 +1,103 @@
 from __future__ import annotations
 
+import logging
+import queue
+import struct
 import threading
-from typing import Callable, Optional
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+try:
+    import sounddevice as sd
+    _HAS_SD = True
+except ImportError:
+    sd = None
+    _HAS_SD = False
 
 
-class AudioIO:
-    def __init__(self, sample_rate: int = 16000, channels: int = 1, chunk_size: int = 1024):
-        self.sample_rate = sample_rate
-        self.channels = channels
-        self.chunk_size = chunk_size
-        self._recording = False
-        self._playing = False
-        self._stream = None
-        self._lock = threading.Lock()
+class AudioInThread:
+    def __init__(
+        self,
+        output_queue: queue.Queue,
+        stop_event: threading.Event,
+        sample_rate: int = 16000,
+        chunk_size: int = 512,
+    ) -> None:
+        self._output_queue = output_queue
+        self._stop_event = stop_event
+        self._sample_rate = sample_rate
+        self._chunk_size = chunk_size
 
-    def start_recording(self, callback: Callable[[bytes], None]) -> None:
-        if self._recording:
+    def run(self) -> None:
+        if sd is None:
+            logger.error("sounddevice not installed")
             return
-        self._recording = True
-        self._record_thread = threading.Thread(target=self._record_loop, args=(callback,), daemon=True)
-        self._record_thread.start()
-
-    def stop_recording(self) -> None:
-        self._recording = False
-
-    def play_audio(self, audio_data: bytes, sample_rate: int | None = None) -> None:
-        with self._lock:
-            self._playing = True
         try:
-            import sounddevice as sd
-            import numpy as np
-            sr = sample_rate or self.sample_rate
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
-            sd.play(audio_array, sr)
-            sd.wait()
-        except ImportError:
-            pass
-        finally:
-            with self._lock:
-                self._playing = False
-
-    def stop_playback(self) -> None:
-        with self._lock:
-            self._playing = False
-        try:
-            import sounddevice as sd
-            sd.stop()
-        except ImportError:
-            pass
-
-    @property
-    def is_playing(self) -> bool:
-        with self._lock:
-            return self._playing
-
-    @property
-    def is_recording(self) -> bool:
-        return self._recording
-
-    def _record_loop(self, callback: Callable[[bytes], None]) -> None:
-        try:
-            import pyaudio
-            pa = pyaudio.PyAudio()
-            stream = pa.open(format=pyaudio.paInt16, channels=self.channels,
-                           rate=self.sample_rate, input=True, frames_per_buffer=self.chunk_size)
-            while self._recording:
-                data = stream.read(self.chunk_size, exception_on_overflow=False)
-                callback(data)
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
-        except ImportError:
-            self._recording = False
+            with sd.RawInputStream(
+                samplerate=self._sample_rate,
+                channels=1,
+                dtype="int16",
+                blocksize=self._chunk_size,
+            ) as stream:
+                while not self._stop_event.is_set():
+                    try:
+                        data, overflowed = stream.read(self._chunk_size)
+                        if overflowed:
+                            logger.warning("AudioInThread: overflow")
+                        self._output_queue.put(bytes(data))
+                    except Exception:
+                        if self._stop_event.is_set():
+                            break
+                        raise
         except Exception:
-            self._recording = False
+            logger.exception("AudioInThread: fatal error")
+
+
+class AudioOutThread:
+    def __init__(
+        self,
+        input_queue: queue.Queue,
+        stop_event: threading.Event,
+        should_play: Optional[threading.Event] = None,
+        sample_rate: int = 16000,
+        chunk_size: int = 512,
+    ) -> None:
+        self._input_queue = input_queue
+        self._stop_event = stop_event
+        self._should_play = should_play
+        self._sample_rate = sample_rate
+        self._chunk_size = chunk_size
+
+    def run(self) -> None:
+        if sd is None:
+            logger.error("sounddevice not installed")
+            return
+        dither = struct.pack(f"<{self._chunk_size}h", *([1] * self._chunk_size))
+        try:
+            with sd.RawOutputStream(
+                samplerate=self._sample_rate,
+                channels=1,
+                dtype="int16",
+                blocksize=self._chunk_size,
+            ) as stream:
+                while not self._stop_event.is_set():
+                    try:
+                        chunk = self._input_queue.get(timeout=0.1)
+                    except queue.Empty:
+                        stream.write(dither)
+                        continue
+                    if chunk is None or chunk == b"END":
+                        break
+                    if self._should_play is not None and not self._should_play.is_set():
+                        continue
+                    stream.write(chunk)
+        except Exception:
+            logger.exception("AudioOutThread: fatal error")
+
+    def flush(self) -> None:
+        while not self._input_queue.empty():
+            try:
+                self._input_queue.get_nowait()
+            except queue.Empty:
+                break
