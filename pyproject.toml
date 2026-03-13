@@ -54,8 +54,10 @@ voice = [
     "faster-whisper>=1.0",
     "openwakeword>=0.6",
     "piper-tts>=1.2",
-    "pyaudio>=0.2",
     "sounddevice>=0.4",
+    "torch>=2.0",
+    "kokoro>=0.9",
+    "melo-tts>=0.1",
 ]
 context = [
     "pywin32>=306; sys_platform == 'win32'",
