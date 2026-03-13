@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from collections import deque
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceActivityDetector:
@@ -103,3 +106,19 @@ class VAD:
         samples = _struct.unpack(f"<{n_samples}h", audio_chunk)
         rms = (sum(s * s for s in samples) / n_samples) ** 0.5
         return rms > self.energy_threshold
+
+
+def create_vad(engine: str = "silero", **kwargs):
+    """Factory: silero -> webrtcvad -> energy-based."""
+    if engine == "silero":
+        try:
+            from homie_core.voice.vad_silero import SileroVAD
+            return SileroVAD(**kwargs)
+        except ImportError:
+            logger.warning("SileroVAD unavailable, falling back to webrtcvad")
+            engine = "webrtcvad"
+    if engine == "webrtcvad":
+        if _HAS_WEBRTCVAD:
+            return VAD(**kwargs)
+        logger.warning("webrtcvad unavailable, falling back to energy-based VAD")
+    return VoiceActivityDetector(**kwargs)
