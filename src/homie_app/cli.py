@@ -185,6 +185,9 @@ def create_parser() -> argparse.ArgumentParser:
     # homie status
     subparsers.add_parser("status", help="Show Homie status")
 
+    # homie settings
+    subparsers.add_parser("settings", help="Configure Homie (voice, socials, plugins, etc.)")
+
     return parser
 
 
@@ -1064,6 +1067,7 @@ def cmd_vault_status(args, config=None):
 
 def cmd_connect(args, config=None):
     """Connect a provider via OAuth or API key."""
+    print("Note: 'homie connect' is deprecated. Use 'homie settings' > Email & Socials instead.")
     from homie_core.config import load_config
     cfg = config or load_config()
     provider = args.provider
@@ -1737,6 +1741,48 @@ def cmd_status(args, config=None):
         print(f"Connections: {', '.join(connected) if connected else 'none'}")
 
 
+def cmd_settings(args, config=None):
+    """Interactive settings menu."""
+    from homie_app.init import (
+        _step_user_profile, _step_screen_reader,
+        _step_email, _step_social_connections, _step_privacy, _step_plugins,
+        _step_service_mode, _step_notifications, _ask_choice, _save_config,
+    )
+    if config is None:
+        from homie_core.config import load_config
+        config = load_config()
+    while True:
+        choice = _ask_choice("\nHomie Settings", [
+            "LLM & Model",
+            "Voice",
+            "User Profile",
+            "Screen Reader",
+            "Email & Socials",
+            "Privacy",
+            "Plugins",
+            "Notifications",
+            "Service Mode",
+            "Back",
+        ])
+        if choice == 9:
+            break
+        steps = {
+            2: lambda: _step_user_profile(config),
+            3: lambda: _step_screen_reader(config),
+            4: lambda: (_step_email(config), _step_social_connections(config)),
+            5: lambda: _step_privacy(config),
+            6: lambda: _step_plugins(config),
+            7: lambda: _step_notifications(config),
+            8: lambda: _step_service_mode(config),
+        }
+        if choice in steps:
+            steps[choice]()
+            _save_config(config, "homie.config.yaml")
+            print("  Settings saved.")
+        else:
+            print("  Not yet implemented.")
+
+
 def main(argv: list[str] | None = None):
     parser = create_parser()
     args = parser.parse_args(argv)
@@ -1771,6 +1817,7 @@ def main(argv: list[str] | None = None):
         "voice": cmd_voice,
         "stop": cmd_stop,
         "status": cmd_status,
+        "settings": cmd_settings,
     }
 
     handler = commands.get(args.command)
