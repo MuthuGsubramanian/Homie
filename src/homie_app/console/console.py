@@ -116,10 +116,25 @@ class Console:
         }
 
     def run(self):
-        """Main input loop."""
+        """Main input loop with autocomplete."""
+        try:
+            from prompt_toolkit import PromptSession
+            from homie_app.console.autocomplete import HomieCompleter
+            session = PromptSession(
+                completer=HomieCompleter(self._router),
+                complete_while_typing=False,
+            )
+            use_prompt_toolkit = True
+        except ImportError:
+            session = None
+            use_prompt_toolkit = False
+
         while True:
             try:
-                user_input = input(f"{self._user_name}> ").strip()
+                if use_prompt_toolkit:
+                    user_input = session.prompt(f"{self._user_name}> ").strip()
+                else:
+                    user_input = input(f"{self._user_name}> ").strip()
             except (EOFError, KeyboardInterrupt):
                 self._print("\n")
                 break
@@ -136,7 +151,6 @@ class Console:
                     self._print(f"Homie> {result}\n")
                 continue
 
-            # Chat with brain
             if not self._brain:
                 self._print("Homie> No model loaded. Use /settings to configure one.\n")
                 continue
