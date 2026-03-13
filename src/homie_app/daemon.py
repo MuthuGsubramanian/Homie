@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import sys
 from pathlib import Path
 from typing import Iterator, Optional
 
+logger = logging.getLogger(__name__)
+
 from homie_core.config import HomieConfig, load_config
 from homie_core.enterprise import load_enterprise_policy, apply_policy
+from homie_core.voice.voice_manager import VoiceManager
+from homie_core.voice.voice_pipeline import PipelineState
 from homie_core.intelligence.task_graph import TaskGraph
 from homie_core.intelligence.proactive_retrieval import ProactiveRetrieval
 from homie_core.intelligence.interruption_model import InterruptionModel
@@ -230,6 +235,18 @@ class HomieDaemon:
         except Exception as e:
             print(f"  Browser History: not available ({e})")
 
+        # Voice
+        self._voice_manager: Optional[VoiceManager] = None
+        if self._config.voice.enabled:
+            try:
+                self._voice_manager = VoiceManager(
+                    config=self._config.voice,
+                    on_query=self._on_user_query_stream,
+                    on_state_change=self._on_voice_state,
+                )
+            except Exception:
+                logger.warning("Voice initialization failed, continuing without voice")
+
         # Try to initialize neural components with HF embeddings
         self._init_neural_components()
 
@@ -259,7 +276,8 @@ class HomieDaemon:
             on_submit=self._on_user_query,
             on_submit_stream=self._on_user_query_stream,
         )
-        self._hotkey = HotkeyListener(hotkey="alt+8", callback=self._on_hotkey)
+        hotkey_str = self._config.voice.hotkey if self._config.voice.enabled else "alt+8"
+        self._hotkey = HotkeyListener(hotkey=hotkey_str, callback=self._on_hotkey)
 
         # Model engine + brain (lazy loaded)
         self._engine = None
@@ -361,7 +379,10 @@ class HomieDaemon:
             return f"Scheduled task error: {e}"
 
     def _on_hotkey(self) -> None:
-        self._overlay.toggle()
+        if self._voice_manager:
+            self._voice_manager.on_hotkey()
+        elif self._overlay:
+            self._overlay.toggle()
 
     def _inject_proactive_context(self) -> None:
         """Feed proactive retrieval + sentiment into working memory."""
@@ -477,6 +498,9 @@ class HomieDaemon:
         except Exception as e:
             yield f"\nError: {e}"
 
+    def _on_voice_state(self, state: PipelineState) -> None:
+        logger.debug("Voice state: %s", state.value)
+
     def _load_engine(self) -> None:
         try:
             from homie_core.model.engine import ModelEngine
@@ -527,6 +551,10 @@ class HomieDaemon:
         neural_status = "with neural perception" if self._context_engine else "basic"
         print(f"  Observer: running ({neural_status})")
 
+        if self._voice_manager:
+            self._voice_manager.start()
+            logger.info("Voice pipeline started")
+
         # Start hotkey listener
         self._hotkey.start()
         print("  Hotkey (Alt+8): active")
@@ -573,6 +601,8 @@ class HomieDaemon:
     def stop(self) -> None:
         print("\nHomie daemon stopping...")
         self._running = False
+        if self._voice_manager:
+            self._voice_manager.stop()
 
         # Save session for tomorrow
         apps = self._observer.get_app_tracker().get_usage()
