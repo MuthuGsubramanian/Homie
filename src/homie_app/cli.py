@@ -169,6 +169,16 @@ def create_parser() -> argparse.ArgumentParser:
     browser_sub.add_parser("scan", help="Full history scan")
     browser_sub.add_parser("patterns", help="Browsing patterns analysis")
 
+    # homie voice
+    voice_parser = subparsers.add_parser("voice", help="Voice interaction mode")
+    voice_sub = voice_parser.add_subparsers(dest="subcmd")
+    voice_sub.add_parser("status", help="Show voice component status")
+    voice_sub.add_parser("enable", help="Enable voice")
+    voice_sub.add_parser("disable", help="Disable voice")
+    voice_parser.add_argument("--mode", choices=["hybrid", "wake_word", "push_to_talk", "conversational"])
+    voice_parser.add_argument("--tts", choices=["auto", "fast", "quality", "multilingual"])
+    voice_parser.add_argument("--lang", help="Force language (en, ta, te, ml, fr, es)")
+
     return parser
 
 
@@ -1644,6 +1654,53 @@ def cmd_disconnect(args, config=None):
         vault.lock()
 
 
+def cmd_voice(args, config=None):
+    """Handle `homie voice` command."""
+    from homie_core.config import load_config
+    cfg = config or load_config(getattr(args, "config", None))
+
+    subcmd = getattr(args, "subcmd", None)
+    if subcmd == "status":
+        from homie_core.voice.voice_manager import VoiceManager
+        mgr = VoiceManager(config=cfg.voice, on_query=lambda t: iter(["Voice status check"]))
+        print(mgr.status_report())
+        return
+
+    if subcmd == "enable":
+        print("Voice enabled. Update homie.config.yaml to persist.")
+        return
+
+    if subcmd == "disable":
+        print("Voice disabled. Update homie.config.yaml to persist.")
+        return
+
+    # Default: enter conversational voice mode
+    cfg.voice.enabled = True
+    if hasattr(args, "mode") and args.mode:
+        cfg.voice.mode = args.mode
+    if hasattr(args, "tts") and args.tts:
+        cfg.voice.tts_mode = args.tts
+    if hasattr(args, "lang") and args.lang:
+        cfg.voice.stt_language = args.lang
+
+    from homie_app.daemon import HomieDaemon
+    daemon = HomieDaemon(config_path=getattr(args, "config", None))
+    daemon._config = cfg
+
+    try:
+        daemon.start()
+        if daemon._voice_manager:
+            daemon._voice_manager.enter_conversational()
+            print("Voice mode active. Say 'goodbye' to exit or press Ctrl+C.")
+            import time
+            while daemon._voice_manager._conversational_active:
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        daemon.stop()
+
+
 def main(argv: list[str] | None = None):
     parser = create_parser()
     args = parser.parse_args(argv)
@@ -1675,6 +1732,7 @@ def main(argv: list[str] | None = None):
         "social": cmd_social,
         "sm": cmd_sm,
         "browser": cmd_browser,
+        "voice": cmd_voice,
     }
 
     handler = commands.get(args.command)
