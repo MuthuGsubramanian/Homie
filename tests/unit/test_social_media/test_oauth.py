@@ -33,7 +33,7 @@ class TestGetAuthUrl:
 
 
 class TestExchange:
-    @patch("homie_core.social_media.oauth._requests")
+    @patch("homie_core.social_media.oauth.requests")
     def test_exchange_success(self, mock_req):
         resp = MagicMock()
         resp.status_code = 200
@@ -45,7 +45,7 @@ class TestExchange:
         assert tokens["refresh_token"] == "ref"
         mock_req.post.assert_called_once()
 
-    @patch("homie_core.social_media.oauth._requests")
+    @patch("homie_core.social_media.oauth.requests")
     def test_exchange_sends_correct_data(self, mock_req):
         resp = MagicMock()
         resp.json.return_value = {}
@@ -60,7 +60,7 @@ class TestExchange:
 
 
 class TestRefresh:
-    @patch("homie_core.social_media.oauth._requests")
+    @patch("homie_core.social_media.oauth.requests")
     def test_refresh_success(self, mock_req):
         resp = MagicMock()
         resp.status_code = 200
@@ -70,7 +70,7 @@ class TestRefresh:
         tokens = _make_oauth().refresh("old_ref")
         assert tokens["access_token"] == "new_tok"
 
-    @patch("homie_core.social_media.oauth._requests")
+    @patch("homie_core.social_media.oauth.requests")
     def test_refresh_sends_correct_grant_type(self, mock_req):
         resp = MagicMock()
         resp.json.return_value = {}
