@@ -1,0 +1,25 @@
+---
+import StatBar from './StatBar.astro';
+
+interface Props {
+  name: string;
+  color: string;
+  level: string;
+  description: string;
+  percent: number;
+  borderColor?: string;
+  bgColor?: string;
+}
+const { name, color, level, description, percent, borderColor, bgColor } = Astro.props;
+const bColor = borderColor || 'var(--border-subtle)';
+const bBg = bgColor || 'transparent';
+---
+
+<div class="skill-card" style={`border-color: ${bColor}; background: ${bBg};`}>
+  <div class="flex justify-between items-center mb-2">
+    <span style={`font-family: var(--font-retro); font-size: 15px; color: ${color}; letter-spacing: 2px;`}>{name}</span>
+    <span style="font-family: var(--font-pixel); font-size: 8px; color: var(--accent-green);">{level}</span>
+  </div>
+  <p style="font-family: var(--font-retro); font-size: 14px; color: var(--text-muted); line-height: 1.6;">{description}</p>
+  <StatBar percent={percent} color={color} />
+</div>

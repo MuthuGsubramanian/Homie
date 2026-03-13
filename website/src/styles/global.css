@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/* === Font Faces === */
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'VT323';
+  src: url('/fonts/VT323-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* === CSS Variables === */
+:root {
+  --bg-primary: #0d0d1a;
+  --bg-card: rgba(241, 196, 15, 0.03);
+  --accent-gold: #f1c40f;
+  --accent-green: #2ecc71;
+  --accent-blue: #3498db;
+  --accent-purple: #9b59b6;
+  --accent-red: #e74c3c;
+  --accent-orange: #f39c12;
+  --text-primary: #ffffff;
+  --text-body: #bbbbbb;
+  --text-muted: #888888;
+  --text-dim: #666666;
+  --text-faint: #555555;
+  --text-ghost: #333333;
+  --border-gold: rgba(241, 196, 15, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --font-pixel: 'Press Start 2P', monospace;
+  --font-retro: 'VT323', 'Courier New', monospace;
+  --font-legal: system-ui, -apple-system, sans-serif;
+}
+
+/* === Base (placed in Tailwind's base layer so utilities can override) === */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-body);
+    font-family: var(--font-retro);
+    font-size: 14px;
+    line-height: 1.8;
+    min-height: 100vh;
+  }
+
+  a {
+    text-decoration: none;
+  }
+}
+
+/* === HUD Divider === */
+.hud-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-gold), transparent);
+  margin: 0;
+}
+
+/* === Section Label === */
+.section-label {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 4px;
+  text-align: center;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+
+/* === Status Line === */
+.status-line {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--accent-green);
+  letter-spacing: 4px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* === Page Title === */
+.page-title {
+  font-family: var(--font-pixel);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* === Page Subtitle === */
+.page-subtitle {
+  font-family: var(--font-retro);
+  font-size: 13px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* === Arc Reactor Pulse === */
+@keyframes reactor-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(241, 196, 15, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(241, 196, 15, 0.5); }
+}
+
+.reactor-glow {
+  animation: reactor-pulse 3s ease-in-out infinite;
+}
+
+/* === Typing Animation === */
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+.typing-effect {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typing 1.5s steps(40) forwards;
+}
+
+/* === Stat Bar Fill Animation === */
+@keyframes fill-bar {
+  from { width: 0; }
+}
+
+.stat-bar-fill {
+  animation: fill-bar 1s ease-out forwards;
+}
+
+/* === Button === */
+.cta-button {
+  border: 2px solid var(--accent-gold);
+  color: var(--accent-gold);
+  padding: 10px 28px;
+  font-family: var(--font-retro);
+  font-size: 16px;
+  letter-spacing: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.cta-button:hover {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+}
+
+/* === Card Hover === */
+.skill-card {
+  border: 1px solid var(--border-subtle);
+  padding: 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.skill-card:hover {
+  border-color: var(--border-gold);
+  box-shadow: 0 0 12px rgba(241, 196, 15, 0.1);
+}

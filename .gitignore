@@ -1,1 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.idea/
+.vscode/
+*.db
+*.log
+.env
 homie.config.yaml
+.superpowers/

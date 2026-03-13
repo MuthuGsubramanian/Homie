@@ -1,0 +1,49 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import HeroSection from '../components/HeroSection.astro';
+import FeatureCard from '../components/FeatureCard.astro';
+import StatsRow from '../components/StatsRow.astro';
+import QuestLog from '../components/QuestLog.astro';
+
+const features = [
+  { name: 'VOICE', color: 'var(--accent-gold)', level: 'LVL MAX', description: 'Talk to your AI. It talks back. Wake word, push-to-talk, or full conversation.', percent: 95, borderColor: 'rgba(241,196,15,0.2)', bgColor: 'rgba(241,196,15,0.03)' },
+  { name: 'MEMORY', color: 'var(--accent-green)', level: 'LVL MAX', description: 'Learns your habits, remembers your context. Working, episodic & semantic memory.', percent: 90, borderColor: 'rgba(46,204,113,0.2)', bgColor: 'rgba(46,204,113,0.03)' },
+  { name: 'PRIVACY', color: 'var(--accent-blue)', level: 'LVL MAX', description: 'AES-256 vault. Zero telemetry. Your data never leaves your machine. Ever.', percent: 100, borderColor: 'rgba(52,152,219,0.2)', bgColor: 'rgba(52,152,219,0.03)' },
+  { name: 'PLUGINS', color: 'var(--accent-purple)', level: '12 SLOTS', description: 'Browser, clipboard, IDE, git, terminal, health, music, notes — and more.', percent: 85, borderColor: 'rgba(155,89,182,0.2)', bgColor: 'rgba(155,89,182,0.03)' },
+];
+---
+
+<BaseLayout
+  title="Hey Homie — Your Local AI Companion"
+  description="Fully local, privacy-first AI assistant that runs entirely on your machine. No cloud. No tracking. Just you and your homie."
+  activePage="home"
+>
+  <HeroSection />
+
+  <div class="hud-divider"></div>
+
+  <section class="py-10 px-6">
+    <p class="section-label" style="color: var(--text-faint);">EQUIPPED ABILITIES</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+      {features.map(f => (
+        <FeatureCard
+          name={f.name}
+          color={f.color}
+          level={f.level}
+          description={f.description}
+          percent={f.percent}
+          borderColor={f.borderColor}
+          bgColor={f.bgColor}
+        />
+      ))}
+    </div>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <StatsRow />
+
+  <div class="hud-divider"></div>
+
+  <QuestLog />
+</BaseLayout>

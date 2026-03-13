@@ -1,0 +1,20 @@
+---
+const stats = [
+  { value: '100%', label: 'LOCAL', color: 'var(--accent-gold)' },
+  { value: '0', label: 'CLOUD CALLS', color: 'var(--accent-green)' },
+  { value: '20+', label: 'MODULES', color: 'var(--accent-blue)' },
+  { value: '∞', label: 'PRIVACY', color: 'var(--accent-red)' },
+];
+---
+
+<section class="py-10 px-6 text-center">
+  <p class="section-label" style="color: var(--text-faint);">CHARACTER STATS</p>
+  <div class="flex justify-center gap-8 md:gap-12 flex-wrap">
+    {stats.map(stat => (
+      <div>
+        <div style={`font-family: var(--font-pixel); font-size: 24px; color: ${stat.color}; font-weight: bold;`}>{stat.value}</div>
+        <div style="font-family: var(--font-retro); font-size: 14px; color: var(--text-dim); letter-spacing: 2px; margin-top: 4px;">{stat.label}</div>
+      </div>
+    ))}
+  </div>
+</section>
