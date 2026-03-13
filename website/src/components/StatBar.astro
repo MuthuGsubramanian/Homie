@@ -1,0 +1,14 @@
+---
+interface Props {
+  percent: number;
+  color: string;
+}
+const { percent, color } = Astro.props;
+---
+
+<div style="margin-top: 8px; height: 3px; background: #1a1a2e; border-radius: 2px;">
+  <div
+    class="stat-bar-fill"
+    style={`height: 100%; width: ${percent}%; background: ${color}; border-radius: 2px;`}
+  ></div>
+</div>

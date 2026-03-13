@@ -1,0 +1,164 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Privacy Policy — Hey Homie"
+  description="Privacy Policy for Homie AI. We don't collect your data. Period."
+  activePage=""
+>
+  <section class="pt-12 pb-8 px-6 text-center">
+    <p class="status-line">■ LEGAL PROTOCOLS ACTIVE</p>
+    <h1 class="page-title">PRIVACY POLICY</h1>
+    <p class="page-subtitle">EFFECTIVE: MARCH 2026</p>
+  </section>
+
+  <div class="hud-divider"></div>
+
+  <article class="py-10 px-6 max-w-3xl mx-auto legal-content">
+
+    <section class="legal-section highlight-section">
+      <h2>The Short Version</h2>
+      <p><strong>We don't collect your data. Period.</strong> Homie runs entirely on your machine. We have no servers, no analytics pipeline, and no way to see what you do with Homie. This privacy policy exists because the law says we need one — but the honest answer is: your data is yours, and we never see it.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>1. What Data Homie Processes Locally</h2>
+      <p>Homie processes data on your machine to function as your personal AI assistant. This may include:</p>
+      <ul>
+        <li><strong>Observations:</strong> Work patterns, routines, and habits (if enabled in privacy settings).</li>
+        <li><strong>Memory:</strong> Working memory (current context), episodic memory (past interactions), and semantic memory (learned knowledge).</li>
+        <li><strong>Voice:</strong> Speech-to-text and text-to-speech audio, processed locally via faster-whisper and Piper/Kokoro/MeloTTS.</li>
+        <li><strong>Email:</strong> Gmail messages if you connect your account — fetched and processed locally.</li>
+        <li><strong>Browser history:</strong> If enabled, browsing data from local browser profiles.</li>
+        <li><strong>Financial reminders:</strong> If enabled, extracted from emails and documents locally.</li>
+      </ul>
+      <p>All of this data is processed and stored locally in <code>~/.homie/</code> on your machine. None of it is transmitted anywhere.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>2. How Local Data Is Stored</h2>
+      <p>Homie stores data in two forms:</p>
+      <ul>
+        <li><strong>Databases:</strong> SQLite databases and ChromaDB vector stores in <code>~/.homie/</code>.</li>
+        <li><strong>Encrypted vault:</strong> Sensitive data (credentials, tokens, personal information) is encrypted with <strong>AES-256-GCM</strong> in a vault protected by your OS keyring (Windows Credential Manager, macOS Keychain, or Linux Secret Service). An optional password layer uses PBKDF2 with 600,000 iterations.</li>
+      </ul>
+    </section>
+
+    <section class="legal-section">
+      <h2>3. What We (Hey Homie) Collect</h2>
+      <p><strong>From the Homie application:</strong> Nothing. Zero telemetry, zero crash reporting, zero phone-home. There is no code in Homie that transmits data to us or to anyone else.</p>
+      <p><strong>From this website:</strong> Standard web server logs (IP address, user agent, pages visited) as collected by our hosting provider. We do not run analytics scripts, tracking pixels, or advertising technology on this website.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>4. Optional Cloud Connections</h2>
+      <p>If you choose to connect external services:</p>
+      <ul>
+        <li><strong>Gmail:</strong> Uses OAuth 2.0. Tokens are stored in your local encrypted vault. Emails are fetched and processed on your machine. No email data passes through our servers.</li>
+        <li><strong>Social media:</strong> API tokens stored in your local vault. Data flows between your machine and the platform directly — never through us.</li>
+      </ul>
+      <p>These services have their own privacy policies. We encourage you to review them.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>5. Voice Data</h2>
+      <p>Voice data is processed entirely on your machine using local models (faster-whisper for speech-to-text, Piper/Kokoro/MeloTTS for text-to-speech). Audio is never transmitted over the network. No voice recordings are stored unless you explicitly enable voice logging in your configuration.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>6. No Tracking, No Telemetry</h2>
+      <p>Homie contains:</p>
+      <ul>
+        <li>No analytics SDK</li>
+        <li>No crash reporting</li>
+        <li>No update checks that transmit usage data</li>
+        <li>No feature flags or A/B testing</li>
+        <li>No advertising identifiers</li>
+      </ul>
+      <p>Homie does not know how many users it has. We like it that way.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>7. Data Retention and Control</h2>
+      <p>You have full control over your data:</p>
+      <ul>
+        <li><strong>Retention period:</strong> Configurable (default: 30 days). Older data is automatically purged.</li>
+        <li><strong>Storage limit:</strong> Configurable (default: 512 MB).</li>
+        <li><strong>Delete everything:</strong> Remove the <code>~/.homie/</code> directory. That's it. There's nothing else anywhere.</li>
+        <li><strong>Export:</strong> <code>homie backup --to &lt;path&gt;</code> creates an encrypted archive of your data.</li>
+      </ul>
+    </section>
+
+    <section class="legal-section">
+      <h2>8. Your Rights</h2>
+      <p>You have full control over all data Homie processes. You can view, export, modify, or delete any data at any time by accessing your <code>~/.homie/</code> directory or using the CLI tools. No request to us is needed — it is your filesystem, your machine, your data.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>9. Children's Privacy</h2>
+      <p>Homie is not designed for or directed at children under the age of 13. We do not knowingly collect or process data from children. Since Homie processes data locally and we collect nothing, this is a formality — but we state it for compliance with COPPA and similar regulations.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>10. Changes to This Policy</h2>
+      <p>We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated effective date. Since we don't have your email (or any way to contact you), checking this page is the only way to see updates.</p>
+    </section>
+
+    <section class="legal-section">
+      <h2>11. Contact</h2>
+      <p>For questions about this privacy policy, contact: <a href="mailto:muthu.g.subramanian@outlook.com">muthu.g.subramanian@outlook.com</a></p>
+    </section>
+
+  </article>
+</BaseLayout>
+
+<style>
+  .legal-content {
+    font-family: var(--font-legal);
+    color: var(--text-body);
+    line-height: 1.8;
+  }
+  .legal-section {
+    margin-bottom: 32px;
+  }
+  .legal-section h2 {
+    font-family: var(--font-retro);
+    font-size: 18px;
+    color: var(--accent-gold);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .legal-section p {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .legal-section ul {
+    padding-left: 20px;
+    margin-bottom: 12px;
+  }
+  .legal-section li {
+    font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .legal-section a {
+    color: var(--accent-gold);
+    text-decoration: underline;
+  }
+  .legal-section strong {
+    color: var(--text-primary);
+  }
+  .legal-section code {
+    font-family: var(--font-retro);
+    background: rgba(241, 196, 15, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 14px;
+    color: var(--accent-gold);
+  }
+  .highlight-section {
+    border-left: 3px solid var(--accent-gold);
+    padding-left: 16px;
+  }
+</style>
