@@ -94,12 +94,22 @@ class PluginConfig(BaseModel):
     plugin_dirs: list[str] = Field(default_factory=list)
 
 
+class UserProfileConfig(BaseModel):
+    name: str = "Master"
+    language: str = "en"
+    timezone: str = "auto"
+    work_hours_start: str = "09:00"
+    work_hours_end: str = "18:00"
+    work_days: list[str] = ["mon", "tue", "wed", "thu", "fri"]
+
+
 class HomieConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     plugins: PluginConfig = Field(default_factory=PluginConfig)
+    user: UserProfileConfig = Field(default_factory=UserProfileConfig)
     user_name: str = ""
 
 
