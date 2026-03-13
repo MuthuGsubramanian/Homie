@@ -292,7 +292,8 @@ class VoicePipeline:
         # If we have STT + wakeword detector, transcribe the chunk and check
         if self._stt_ok and self._wakeword is not None:
             try:
-                snippet = self._stt.transcribe(chunk)  # type: ignore[union-attr]
+                _result = self._stt.transcribe(chunk)  # type: ignore[union-attr]
+                snippet = _result[0] if isinstance(_result, tuple) else _result
                 if self._wakeword.check(snippet):  # type: ignore[union-attr]
                     logger.info("Wake word detected -- starting recording")
                     self._do_record_and_process()
@@ -339,7 +340,8 @@ class VoicePipeline:
 
         if self._stt_ok:
             try:
-                transcript = self._stt.transcribe(pcm_audio)  # type: ignore[union-attr]
+                _result = self._stt.transcribe(pcm_audio)  # type: ignore[union-attr]
+                transcript = _result[0] if isinstance(_result, tuple) else _result
             except Exception as exc:
                 logger.error("STT transcription failed: %s", exc)
 
