@@ -12,6 +12,7 @@ except ImportError:
 _HOTKEY_MAP = {
     "alt+8": "<alt>+8",
     "alt+h": "<alt>+h",
+    "ctrl+8": "<ctrl>+8",
     "ctrl+space": "<ctrl>+<space>",
     "f9": "<f9>",
 }
