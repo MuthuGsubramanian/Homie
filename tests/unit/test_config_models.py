@@ -64,3 +64,56 @@ class TestScreenReaderConfig:
         cfg = HomieConfig()
         assert hasattr(cfg, "screen_reader")
         assert cfg.screen_reader.enabled is False
+
+
+class TestServiceConfig:
+    def test_defaults(self):
+        from homie_core.config import ServiceConfig
+        cfg = ServiceConfig()
+        assert cfg.mode == "on_demand"
+        assert cfg.start_on_login is False
+        assert cfg.restart_on_failure is True
+        assert cfg.max_retries == 3
+
+
+class TestNotificationConfig:
+    def test_defaults(self):
+        from homie_core.config import NotificationConfig
+        cfg = NotificationConfig()
+        assert cfg.enabled is True
+        assert cfg.categories["task_reminders"] is True
+        assert cfg.categories["email_digest"] is True
+        assert cfg.categories["social_mentions"] is True
+        assert cfg.categories["context_suggestions"] is True
+        assert cfg.categories["system_alerts"] is True
+        assert cfg.dnd_schedule_enabled is False
+        assert cfg.dnd_schedule_start == "22:00"
+        assert cfg.dnd_schedule_end == "07:00"
+
+    def test_categories_not_shared_between_instances(self):
+        from homie_core.config import NotificationConfig
+        a = NotificationConfig()
+        b = NotificationConfig()
+        a.categories["email_digest"] = False
+        assert b.categories["email_digest"] is True  # Must not be shared
+
+
+class TestConnectionsConfig:
+    def test_defaults(self):
+        from homie_core.config import ConnectionsConfig
+        cfg = ConnectionsConfig()
+        assert cfg.gmail.connected is False
+        assert cfg.twitter.connected is False
+        assert cfg.telegram.connected is False
+        assert cfg.whatsapp.connected is False
+        assert cfg.whatsapp.experimental is True
+        assert cfg.phone_link.connected is False
+        assert cfg.phone_link.read_only is True
+        assert cfg.blog.feed_url == ""
+
+    def test_homie_config_includes_all(self):
+        from homie_core.config import HomieConfig
+        cfg = HomieConfig()
+        assert hasattr(cfg, "service")
+        assert hasattr(cfg, "notifications")
+        assert hasattr(cfg, "connections")
