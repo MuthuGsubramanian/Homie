@@ -1,0 +1,22 @@
+---
+const steps = [
+  { num: '01', title: 'INSTALL HOMIE', desc: "pip install homie-ai. That's it. No accounts, no API keys." },
+  { num: '02', title: 'CHOOSE YOUR MODEL', desc: 'Pick a local LLM that fits your GPU. Homie downloads it for you.' },
+  { num: '03', title: 'SAY "HEY HOMIE"', desc: 'Voice, text, or hotkey — your homie is always ready.' },
+];
+---
+
+<section class="py-10 px-6">
+  <p class="section-label" style="color: var(--text-faint);">QUEST LOG</p>
+  <div class="max-w-xl mx-auto flex flex-col gap-5">
+    {steps.map(step => (
+      <div class="flex gap-4 items-start">
+        <span style="font-family: var(--font-retro); font-size: 16px; color: var(--accent-gold); min-width: 24px;">{step.num}</span>
+        <div>
+          <div style="font-family: var(--font-retro); font-size: 16px; color: var(--text-primary); letter-spacing: 1px;">{step.title}</div>
+          <div style="font-family: var(--font-retro); font-size: 15px; color: var(--text-dim); margin-top: 4px;">{step.desc}</div>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
