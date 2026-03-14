@@ -11,17 +11,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.heyhomie.app.ui.components.GameHudNavBar
 import com.heyhomie.app.ui.navigation.Screen
-import com.heyhomie.app.ui.screens.*
+import com.heyhomie.app.ui.screens.BootScreen
 
 @Composable
 fun HomieNavHost() {
     val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
 
     Scaffold(
         bottomBar = {
-            if (currentRoute != "boot") {
+            if (currentRoute != null && currentRoute != "boot") {
                 GameHudNavBar(
                     currentRoute = currentRoute,
                     onNavigate = { screen ->
@@ -37,13 +37,32 @@ fun HomieNavHost() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Chat.route,
+            startDestination = "boot",
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Chat.route) { ChatScreen() }
-            composable(Screen.PhoneStats.route) { PhoneStatsScreen() }
-            composable(Screen.Network.route) { NetworkScreen() }
-            composable(Screen.Settings.route) { SettingsScreen() }
+            composable("boot") {
+                BootScreen(onBootComplete = {
+                    navController.navigate(Screen.Chat.route) {
+                        popUpTo("boot") { inclusive = true }
+                    }
+                })
+            }
+
+            composable(Screen.Chat.route) {
+                // Chat screen placeholder — will be implemented in Task 6
+            }
+
+            composable(Screen.PhoneStats.route) {
+                // Phone Stats screen placeholder — will be implemented in Task 11
+            }
+
+            composable(Screen.Network.route) {
+                // Network screen placeholder — will be implemented in Task 16
+            }
+
+            composable(Screen.Settings.route) {
+                // Settings screen placeholder — will be implemented in Task 17
+            }
         }
     }
 }
