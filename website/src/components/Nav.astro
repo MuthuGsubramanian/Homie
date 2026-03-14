@@ -15,7 +15,7 @@ const links = [
     <div class="reactor-glow" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent-gold); display: flex; align-items: center; justify-content: center;">
       <div style="width: 10px; height: 10px; border-radius: 50%; background: var(--accent-gold); box-shadow: 0 0 8px var(--accent-gold);"></div>
     </div>
-    <span style="font-family: var(--font-pixel); font-size: 14px; letter-spacing: 3px; color: var(--accent-gold);">HOMIE</span>
+    <span style="font-family: var(--font-pixel); font-size: 18px; letter-spacing: 3px; color: var(--accent-gold);">HOMIE</span>
   </a>
 
   <div class="hidden md:flex gap-5">
@@ -23,7 +23,7 @@ const links = [
       <a
         href={link.href}
         class="nav-link"
-        style={`font-family: var(--font-retro); font-size: 15px; letter-spacing: 2px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-dim)'};`}
+        style={`font-family: var(--font-retro); font-size: 20px; letter-spacing: 2px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-dim)'};`}
       >
         {link.name}
       </a>
@@ -43,7 +43,7 @@ const links = [
     {links.map(link => (
       <a
         href={link.href}
-        style={`font-family: var(--font-pixel); font-size: 14px; letter-spacing: 4px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-muted)'};`}
+        style={`font-family: var(--font-pixel); font-size: 16px; letter-spacing: 4px; color: ${activePage === link.id ? 'var(--accent-gold)' : 'var(--text-muted)'};`}
       >
         {link.name}
       </a>
