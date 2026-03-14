@@ -72,6 +72,15 @@ a_cli = Analysis(
         "google.auth", "google.auth.transport.requests",
         "google.oauth2.credentials",
         "googleapiclient", "googleapiclient.discovery",
+        # Inference routing
+        "homie_core.inference", "homie_core.inference.router",
+        "homie_core.inference.qubrid",
+        # Network / LAN sync
+        "homie_core.network", "homie_core.network.protocol",
+        "homie_core.network.discovery", "homie_core.network.server",
+        "homie_core.network.sync",
+        "zeroconf",
+        "websockets",
     ],
     hookspath=[],
     hooksconfig={},

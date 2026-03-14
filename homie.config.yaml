@@ -144,3 +144,10 @@ inference:
   lan:
     prefer_desktop: true
     max_latency_ms: 500
+
+# ── LAN Network ────────────────────────────────────────────────────────
+network:
+  enabled: true
+  sync_port: 8765
+  auto_discover: true
+  sync_scope: all  # all, conversations, manual

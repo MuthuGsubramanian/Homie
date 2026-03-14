@@ -201,6 +201,13 @@ class InferenceConfig(BaseModel):
     lan: LANInferenceConfig = LANInferenceConfig()
 
 
+class NetworkConfig(BaseModel):
+    enabled: bool = True
+    sync_port: int = 8765
+    auto_discover: bool = True
+    sync_scope: str = "all"  # "all", "conversations", "manual"
+
+
 class HomieConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
@@ -215,6 +222,7 @@ class HomieConfig(BaseModel):
     location: Optional[LocationConfig] = None
     user_name: str = ""
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
 
 
 def _apply_env_overrides(cfg: HomieConfig) -> HomieConfig:
