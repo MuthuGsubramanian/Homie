@@ -81,6 +81,7 @@ def stage_msi(frozen_dir: Path, version: str) -> Path:
         "-srd",
         "-ag",
         "-sfrag",
+        "-sreg",
         "-var", "var.SourceDir",
         "-o", str(components_wxs),
     ])
@@ -119,6 +120,9 @@ def stage_msi(frozen_dir: Path, version: str) -> Path:
         "-cultures:en-US",
         "-b", str(frozen_dir),
         "-b", str(INSTALLER),
+        "-sice:ICE38",  # suppress per-user profile keypath warning
+        "-sice:ICE64",  # suppress per-user profile RemoveFile warning
+        "-sice:ICE61",  # suppress same-version upgrade warning
     ])
 
     if not msi_path.exists():
