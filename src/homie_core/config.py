@@ -79,6 +79,7 @@ class StorageConfig(BaseModel):
 class PrivacyConfig(BaseModel):
     data_retention_days: int = 30
     max_storage_mb: int = 512
+    screen_reader_consent: bool = False
     observers: dict[str, bool] = Field(default_factory=lambda: {
         "media": False,
         "browsing": False,
@@ -94,12 +95,106 @@ class PluginConfig(BaseModel):
     plugin_dirs: list[str] = Field(default_factory=list)
 
 
+class UserProfileConfig(BaseModel):
+    name: str = "Master"
+    language: str = "en"
+    timezone: str = "auto"
+    work_hours_start: str = "09:00"
+    work_hours_end: str = "18:00"
+    work_days: list[str] = ["mon", "tue", "wed", "thu", "fri"]
+
+
+class ScreenReaderConfig(BaseModel):
+    enabled: bool = False
+    level: int = Field(default=1, ge=1, le=3)  # 1=window titles, 2=+OCR, 3=+visual
+    poll_interval_t1: int = 5
+    poll_interval_t2: int = 30
+    poll_interval_t3: int = 60
+    event_driven: bool = True
+    analysis_engine: str = "cloud"  # cloud or local
+    pii_filter: bool = True
+    blocklist: list[str] = [
+        "*password*", "*banking*", "*incognito*", "*private*",
+        "*1Password*", "*KeePass*", "*LastPass*",
+    ]
+    dnd: bool = False
+
+
+class ServiceConfig(BaseModel):
+    mode: str = "on_demand"  # on_demand or windows_service
+    start_on_login: bool = False
+    restart_on_failure: bool = True
+    max_retries: int = 3
+
+
+class NotificationConfig(BaseModel):
+    enabled: bool = True
+    categories: dict[str, bool] = Field(default_factory=lambda: {
+        "task_reminders": True,
+        "email_digest": True,
+        "email_priority": True,
+        "social_mentions": True,
+        "context_suggestions": True,
+        "system_alerts": True,
+        "proactive": True,
+    })
+    dnd_schedule_enabled: bool = False
+    dnd_schedule_start: str = "22:00"
+    dnd_schedule_end: str = "07:00"
+
+
+class ConnectionState(BaseModel):
+    connected: bool = False
+
+
+class WhatsAppConnection(BaseModel):
+    connected: bool = False
+    experimental: bool = True
+
+
+class PhoneLinkConnection(BaseModel):
+    connected: bool = False
+    read_only: bool = True
+
+
+class BlogConnection(BaseModel):
+    connected: bool = False
+    feed_url: str = ""
+
+
+class ConnectionsConfig(BaseModel):
+    gmail: ConnectionState = Field(default_factory=ConnectionState)
+    twitter: ConnectionState = Field(default_factory=ConnectionState)
+    reddit: ConnectionState = Field(default_factory=ConnectionState)
+    telegram: ConnectionState = Field(default_factory=ConnectionState)
+    slack: ConnectionState = Field(default_factory=ConnectionState)
+    facebook: ConnectionState = Field(default_factory=ConnectionState)
+    instagram: ConnectionState = Field(default_factory=ConnectionState)
+    linkedin: ConnectionState = Field(default_factory=ConnectionState)
+    whatsapp: WhatsAppConnection = Field(default_factory=WhatsAppConnection)
+    phone_link: PhoneLinkConnection = Field(default_factory=PhoneLinkConnection)
+    blog: BlogConnection = Field(default_factory=BlogConnection)
+
+
+class LocationConfig(BaseModel):
+    city: str = ""
+    region: str = ""
+    country: str = ""
+    timezone: str = ""
+
+
 class HomieConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     plugins: PluginConfig = Field(default_factory=PluginConfig)
+    user: UserProfileConfig = Field(default_factory=UserProfileConfig)
+    screen_reader: ScreenReaderConfig = Field(default_factory=ScreenReaderConfig)
+    service: ServiceConfig = Field(default_factory=ServiceConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    connections: ConnectionsConfig = Field(default_factory=ConnectionsConfig)
+    location: Optional[LocationConfig] = None
     user_name: str = ""
 
 
