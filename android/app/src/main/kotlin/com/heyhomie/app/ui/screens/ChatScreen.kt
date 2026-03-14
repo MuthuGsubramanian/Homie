@@ -1,18 +1,55 @@
 package com.heyhomie.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.heyhomie.app.ui.components.*
 import com.heyhomie.app.ui.theme.RetroDark
-import com.heyhomie.app.ui.theme.RetroTypography
+import com.heyhomie.app.ui.viewmodel.ChatViewModel
 
 @Composable
-fun ChatScreen() {
-    Box(Modifier.fillMaxSize().background(RetroDark), contentAlignment = Alignment.Center) {
-        Text("CHAT", style = RetroTypography.headlineMedium)
+fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
+    val messages by viewModel.messages.collectAsState()
+    val inputText by viewModel.inputText.collectAsState()
+    val isGenerating by viewModel.isGenerating.collectAsState()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(RetroDark)) {
+        Column(Modifier.fillMaxSize()) {
+            // Chat messages
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
+                items(messages, key = { it.id }) { message ->
+                    ChatBubble(message = message)
+                }
+            }
+
+            // Input
+            RetroTextField(
+                value = inputText,
+                onValueChange = { viewModel.updateInput(it) },
+                onSend = { viewModel.sendMessage(inputText) },
+                enabled = !isGenerating,
+                modifier = Modifier.padding(8.dp)
+            )
+        }
+
+        ScanlineOverlay(alpha = 0.03f)
     }
 }
