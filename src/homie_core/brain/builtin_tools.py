@@ -775,6 +775,12 @@ def register_builtin_tools(
     # PLUGIN BRIDGE
     # ===================================================================
 
+    # ===================================================================
+    # INTELLIGENCE TOOLS (weather, news)
+    # ===================================================================
+    # These are registered separately via register_intelligence_tools()
+    # so they can be called with config/vault from the console bootstrap.
+
     if plugin_manager:
         def tool_plugin(plugin: str, intent: str, params: str = "") -> str:
             """Query an enabled plugin."""
@@ -808,3 +814,68 @@ def register_builtin_tools(
             execute=tool_plugin,
             category="plugins",
         ))
+
+
+def _get_vault_key(vault, provider: str) -> str:
+    """Retrieve an API key from the vault for a given provider."""
+    if not vault:
+        return ""
+    try:
+        cred = vault.get_credential(provider, "default")
+        return cred.access_token if cred else ""
+    except Exception:
+        return ""
+
+
+def register_intelligence_tools(
+    registry: ToolRegistry,
+    config=None,
+    vault=None,
+) -> None:
+    """Register weather and news tools for conversational Brain access."""
+
+    def get_weather(location: str = "", **kwargs) -> str:
+        city = location or ""
+        if not city and config:
+            loc = getattr(config, "location", None)
+            if loc:
+                city = loc.city
+        if not city:
+            return "No location provided or configured. Use /location set <city> first."
+        api_key = _get_vault_key(vault, "weather")
+        from homie_core.intelligence.weather import WeatherService
+        svc = WeatherService(api_key=api_key)
+        data = svc.get_current(city)
+        return svc.format_current(data)
+
+    registry.register(Tool(
+        name="get_weather",
+        description="Get current weather for a location. Uses configured location if none specified.",
+        params=[
+            ToolParam(name="location", description="City name (optional, defaults to configured location)", type="string", required=False, default=""),
+        ],
+        execute=get_weather,
+        category="intelligence",
+    ))
+
+    def get_news(query: str = "", **kwargs) -> str:
+        api_key = _get_vault_key(vault, "news")
+        country = "us"
+        if config:
+            loc = getattr(config, "location", None)
+            if loc and loc.country:
+                country = loc.country.lower()
+        from homie_core.intelligence.news import NewsService
+        svc = NewsService(api_key=api_key)
+        data = svc.get_headlines(country=country, query=query)
+        return svc.format_headlines(data)
+
+    registry.register(Tool(
+        name="get_news",
+        description="Get top news headlines, optionally filtered by topic. Uses configured country.",
+        params=[
+            ToolParam(name="query", description="Topic to search for (optional)", type="string", required=False, default=""),
+        ],
+        execute=get_news,
+        category="intelligence",
+    ))
