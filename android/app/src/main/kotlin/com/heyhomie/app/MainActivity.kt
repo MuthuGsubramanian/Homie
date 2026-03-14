@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.heyhomie.app.ui.HomieNavHost
+import com.heyhomie.app.ui.theme.HomieRetroTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -12,7 +14,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // Theme and NavHost will be added in subsequent tasks
+            HomieRetroTheme {
+                HomieNavHost()
+            }
         }
     }
 }
