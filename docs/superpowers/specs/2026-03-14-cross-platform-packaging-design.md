@@ -301,8 +301,8 @@ Message types:
 
 - Phone detects if desktop Homie is available on LAN
 - If desktop has a larger/better model loaded, phone routes inference there
-- Priority order: desktop LAN model → local on-device model → Qubrid cloud
-- Latency-aware: if LAN round-trip > 500ms, falls back to local/Qubrid
+- Follows the user's configured inference priority (default: `[local, lan, qubrid]`). When the phone has no local model but a paired desktop has a larger one, LAN inference is preferred over Qubrid.
+- Latency-aware: if LAN round-trip > 500ms, falls back to next source in priority chain
 
 ### 6.5 Memory Sync
 
@@ -327,7 +327,7 @@ Message types:
 - Trigger desktop actions: "read my latest emails", "summarize today's screen time"
 - View desktop responses on phone
 
-### 6.8 Large File Transfer Protocol
+### 6.7 Large File Transfer Protocol
 
 Model files (800MB–4GB+) require a dedicated transfer mechanism separate from the main WebSocket:
 
@@ -339,7 +339,7 @@ Model files (800MB–4GB+) require a dedicated transfer mechanism separate from 
 - **Size limit**: configurable, default 8GB max. Transfer rejected if receiver has insufficient free storage.
 - **Cancellation**: either side can send `file_transfer_cancel` to abort.
 
-### 6.9 Desktop — New Module (`src/homie_core/network/`)
+### 6.8 Desktop — New Module (`src/homie_core/network/`)
 
 - `discovery.py` — mDNS advertisement via `zeroconf` library
 - `server.py` — WebSocket server (uses existing FastAPI/uvicorn stack)
