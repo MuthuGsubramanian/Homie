@@ -64,7 +64,14 @@ class InferenceRouter:
         temperature: float = 0.7,
         stop: Optional[list[str]] = None,
         timeout: int = 120,
+        model: Optional[str] = None,
+        preferred_location: Optional[str] = None,
     ) -> str:
+        logger.debug(
+            "InferenceRouter.generate — model hint=%r, preferred_location=%r",
+            model,
+            preferred_location,
+        )
         errors: list[str] = []
         for source in self._priority:
             try:
@@ -97,7 +104,14 @@ class InferenceRouter:
         max_tokens: int = 1024,
         temperature: float = 0.7,
         stop: Optional[list[str]] = None,
+        model: Optional[str] = None,
+        preferred_location: Optional[str] = None,
     ) -> Iterator[str]:
+        logger.debug(
+            "InferenceRouter.stream — model hint=%r, preferred_location=%r",
+            model,
+            preferred_location,
+        )
         errors: list[str] = []
         for source in self._priority:
             try:
