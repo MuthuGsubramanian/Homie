@@ -17,6 +17,7 @@ from homie_core.memory.semantic import SemanticMemory
 from homie_core.brain.cognitive_arch import CognitiveArchitecture
 from homie_core.brain.tool_registry import ToolRegistry
 from homie_core.rag.pipeline import RagPipeline
+from homie_core.middleware import MiddlewareStack, HookRegistry
 
 
 # Rough token estimate: ~4 chars per token
@@ -35,12 +36,15 @@ class BrainOrchestrator:
         semantic_memory: Optional[SemanticMemory] = None,
         tool_registry: Optional[ToolRegistry] = None,
         rag_pipeline: Optional[RagPipeline] = None,
+        middleware_stack: Optional[MiddlewareStack] = None,
     ):
         self._engine = model_engine
         self._wm = working_memory
         self._em = episodic_memory
         self._sm = semantic_memory
         self._system_prompt = "You are Homie, a helpful local AI assistant. Be concise and direct."
+        self._middleware = middleware_stack or MiddlewareStack()
+        self._hooks = HookRegistry()
 
         # Wire up the cognitive architecture with tools + learning + RAG
         self._cognitive = CognitiveArchitecture(
@@ -51,15 +55,40 @@ class BrainOrchestrator:
             system_prompt=self._system_prompt,
             tool_registry=tool_registry,
             rag_pipeline=rag_pipeline,
+            hooks=self._hooks,
         )
 
-    def process(self, user_input: str) -> str:
-        """Full cognitive pipeline — blocking generate."""
-        return self._cognitive.process(user_input)
+    @property
+    def hooks(self) -> HookRegistry:
+        return self._hooks
 
-    def process_stream(self, user_input: str) -> Iterator[str]:
+    def process(self, user_input: str, *, state: dict | None = None) -> str:
+        """Full cognitive pipeline — blocking generate."""
+        state = state or {}
+        message = self._middleware.run_before_turn(user_input, state)
+        if message is None:
+            return ""
+        response = self._cognitive.process(message)
+        response = self._middleware.run_after_turn(response, state)
+        return response
+
+    def process_stream(self, user_input: str, *, state: dict | None = None) -> Iterator[str]:
         """Full cognitive pipeline — streaming for instant first-token."""
-        return self._cognitive.process_stream(user_input)
+        state = state or {}
+        message = self._middleware.run_before_turn(user_input, state)
+        if message is None:
+            return
+        tokens = list(self._cognitive.process_stream(message))
+        response = "".join(tokens)
+        response = self._middleware.run_after_turn(response, state)
+        # Yield final response as single token to preserve streaming interface
+        # (middleware may have modified it, so we re-yield the processed result)
+        # But to preserve original streaming behaviour when no middleware modifies,
+        # yield original tokens if response matches original join
+        if response == "".join(tokens):
+            yield from tokens
+        else:
+            yield response
 
     def _build_optimized_prompt(self, user_input: str) -> str:
         """Fallback prompt builder — used when cognitive arch isn't available.
