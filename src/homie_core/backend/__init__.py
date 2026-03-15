@@ -10,6 +10,7 @@ from homie_core.backend.protocol import (
     FileInfo,
     GrepMatch,
 )
+from homie_core.backend.state import StateBackend
 
 __all__ = [
     "BackendProtocol",
@@ -20,4 +21,5 @@ __all__ = [
     "FileInfo",
     "GrepMatch",
     "LocalFilesystemBackend",
+    "StateBackend",
 ]
