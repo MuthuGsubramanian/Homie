@@ -118,6 +118,7 @@ class GGUFBackend:
 
         # Wait for the server to become ready (large models can take a while)
         self._wait_for_server(timeout=300)
+        self._warm_up()
 
     def _wait_for_server(self, timeout: int = 300) -> None:
         """Poll the health endpoint until the server is ready."""
@@ -154,6 +155,13 @@ class GGUFBackend:
         raise TimeoutError(
             f"llama-server did not become ready within {timeout}s. Last error: {last_error}"
         )
+
+    def _warm_up(self) -> None:
+        """Pre-populate CUDA kernels with a minimal inference call."""
+        try:
+            self.generate("Hi", max_tokens=1, temperature=0.0)
+        except Exception:
+            pass
 
     def generate(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.7, stop: Optional[list[str]] = None) -> str:
         payload = {
