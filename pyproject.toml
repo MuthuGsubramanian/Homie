@@ -106,7 +106,17 @@ network = [
 keyring-linux = [
     "SecretStorage>=3.3; sys_platform == 'linux'",
 ]
-all = ["homie-ai[model,voice,context,storage,app,neural,email,social,messaging,screen-reader,service,inference,network,keyring-linux]"]
+docs = [
+    "PyMuPDF>=1.24",
+    "python-docx>=1.0",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6",
+    "trafilatura>=1.8",
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12",
+]
+ocr = ["easyocr>=1.7"]
+all = ["homie-ai[model,voice,context,storage,app,neural,email,social,messaging,screen-reader,service,inference,network,keyring-linux,docs,ocr]"]
 
 [project.scripts]
 homie = "homie_app.cli:main"
