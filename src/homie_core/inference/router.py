@@ -9,6 +9,12 @@ from homie_core.model.engine import ModelEngine
 
 logger = logging.getLogger(__name__)
 
+_TIER_TIMEOUTS = {
+    "small": 8,
+    "medium": 25,
+    "large": 90,
+}
+
 _FALLBACK_BANNER = (
     "No local model found! Using Homie's intelligence until local model is setup!"
 )
@@ -66,11 +72,15 @@ class InferenceRouter:
         timeout: int = 120,
         model: Optional[str] = None,
         preferred_location: Optional[str] = None,
+        tier: Optional[str] = None,
     ) -> str:
+        if tier is not None:
+            timeout = _TIER_TIMEOUTS.get(tier, timeout)
         logger.debug(
-            "InferenceRouter.generate — model hint=%r, preferred_location=%r",
+            "InferenceRouter.generate — model hint=%r, preferred_location=%r, tier=%r",
             model,
             preferred_location,
+            tier,
         )
         errors: list[str] = []
         for source in self._priority:
@@ -106,11 +116,13 @@ class InferenceRouter:
         stop: Optional[list[str]] = None,
         model: Optional[str] = None,
         preferred_location: Optional[str] = None,
+        tier: Optional[str] = None,
     ) -> Iterator[str]:
         logger.debug(
-            "InferenceRouter.stream — model hint=%r, preferred_location=%r",
+            "InferenceRouter.stream — model hint=%r, preferred_location=%r, tier=%r",
             model,
             preferred_location,
+            tier,
         )
         errors: list[str] = []
         for source in self._priority:

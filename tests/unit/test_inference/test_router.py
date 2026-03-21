@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock, patch
 import pytest
 
-from homie_core.inference.router import InferenceRouter
+from homie_core.inference.router import InferenceRouter, _TIER_TIMEOUTS
 
 
 def _make_config(priority=None):
@@ -108,3 +108,71 @@ def test_router_local_error_falls_through():
         mock_qubrid.generate.return_value = "cloud fallback"
         result = router.generate("hello")
     assert result == "cloud fallback"
+
+
+# --- Tiered timeout tests ---
+
+def test_tier_timeouts_dict_values():
+    assert _TIER_TIMEOUTS["small"] == 8
+    assert _TIER_TIMEOUTS["medium"] == 25
+    assert _TIER_TIMEOUTS["large"] == 90
+
+
+def test_generate_small_tier_uses_8s_timeout():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", tier="small")
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 8
+
+
+def test_generate_medium_tier_uses_25s_timeout():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", tier="medium")
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 25
+
+
+def test_generate_large_tier_uses_90s_timeout():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", tier="large")
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 90
+
+
+def test_generate_no_tier_uses_default_timeout():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", timeout=55)
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 55
+
+
+def test_generate_unknown_tier_falls_back_to_default():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", timeout=77, tier="xlarge")
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 77
+
+
+def test_generate_tier_none_does_not_override_timeout():
+    engine = MagicMock()
+    engine.is_loaded = True
+    engine.generate.return_value = "ok"
+    router = InferenceRouter(config=_make_config(), model_engine=engine)
+    router.generate("hi", timeout=42, tier=None)
+    _, kwargs = engine.generate.call_args
+    assert kwargs["timeout"] == 42
