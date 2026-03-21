@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 from homie_core.screen_reader.pii_filter import PIIFilter
+from homie_core.security.redact import redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -57,4 +58,5 @@ class OCRReader:
             return None
 
     def _apply_pii_filter(self, text: str) -> str:
-        return self._pii_filter.filter(text)
+        filtered = self._pii_filter.filter(text)
+        return redact_sensitive_text(filtered)
