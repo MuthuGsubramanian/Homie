@@ -55,8 +55,8 @@ llm:
   context_length: 65536
   gpu_layers: -1
   max_tokens: 2048
-  model_path: C:\Users\muthu\.lmstudio\models\lmstudio-community\Qwen3.5-35B-A3B-GGUF\Qwen3.5-35B-A3B-Q4_K_M.gguf
-  repo_id: lmstudio-community/Qwen3.5-35B-A3B-GGUF
+  model_path: C:\Users\muthu\.homie\models\glm-4.7-flash.gguf
+  repo_id: THUDM/glm-4.7-flash-GGUF
   temperature: 0.7
 location: null
 network:
