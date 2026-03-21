@@ -16,6 +16,12 @@ def run_with_timeout(
     Returns the result if fn completes within timeout.
     Raises TimeoutError if fn doesn't complete in time.
     Propagates any exception raised by fn.
+
+    Note: On timeout, the daemon thread continues running in the background
+    until the function completes or the process exits. Python threads cannot
+    be forcibly killed. For operations that hold GPU/CPU resources (e.g. model
+    inference), repeated timeouts may cause resource accumulation within a
+    single session. The thread is daemon so it will not prevent process exit.
     """
     kwargs = kwargs or {}
     result: list = [None]

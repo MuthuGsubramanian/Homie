@@ -18,9 +18,6 @@ class HealthStatus(Enum):
     FAILED = "failed"
     UNKNOWN = "unknown"
 
-    # Severity ordering for comparisons
-    _severity = None
-
     def __lt__(self, other):
         if not isinstance(other, HealthStatus):
             return NotImplemented

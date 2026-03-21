@@ -38,14 +38,29 @@ class Guardian:
         pid = self.read_pid()
         if pid is None:
             return False
-        if psutil is None:
-            # Fallback: try os.kill with signal 0
+        if psutil is not None:
+            return psutil.pid_exists(pid)
+        # Fallback without psutil — platform-specific
+        if os.name == "nt":
+            # On Windows, os.kill(pid, 0) terminates the process.
+            # Use ctypes OpenProcess as a safe alternative.
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                if handle:
+                    kernel32.CloseHandle(handle)
+                    return True
+                return False
+            except Exception:
+                return False
+        else:
             try:
                 os.kill(pid, 0)
                 return True
             except OSError:
                 return False
-        return psutil.pid_exists(pid)
 
     def cleanup(self) -> None:
         """Remove the PID file."""
