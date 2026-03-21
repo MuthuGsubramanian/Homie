@@ -54,8 +54,11 @@ class MetricsCollector:
                 variance = sum((x - mean) ** 2 for x in series) / len(series)
                 std_dev = math.sqrt(variance) if variance > 0 else 0.0
 
+                # Anomaly: value deviates beyond threshold * std_dev from mean.
+                # For constant series (std_dev=0), flag if deviation exceeds 10% of mean.
+                min_abs_deviation = abs(mean * 0.1) if mean != 0 else 1.0
                 if (std_dev > 0 and abs(value - mean) > self._anomaly_threshold * std_dev) or (
-                    std_dev == 0.0 and value != mean
+                    std_dev == 0.0 and abs(value - mean) > min_abs_deviation
                 ):
                     alert = AnomalyAlert(
                         module=module,

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -21,7 +22,8 @@ class HealthLog:
     def initialize(self) -> None:
         """Create the database and health_events table."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path))
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._write_lock = threading.Lock()
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("""
@@ -69,18 +71,19 @@ class HealthLog:
         """Write a health event to the log."""
         if self._conn is None:
             return
-        self._conn.execute(
-            "INSERT INTO health_events (timestamp, module, event_type, severity, details, version_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                event.timestamp,
-                event.module,
-                event.event_type,
-                event.severity,
-                json.dumps(event.details),
-                event.version_id,
-            ),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "INSERT INTO health_events (timestamp, module, event_type, severity, details, version_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    event.timestamp,
+                    event.module,
+                    event.event_type,
+                    event.severity,
+                    json.dumps(event.details),
+                    event.version_id,
+                ),
+            )
+            self._conn.commit()
 
     def query(
         self,
@@ -140,11 +143,12 @@ class HealthLog:
         """Write a recovery attempt to the history (append-only)."""
         if self._conn is None:
             return
-        self._conn.execute(
-            "INSERT INTO recovery_history (timestamp, module, failure_type, tier, action, success, time_to_recover_ms, system_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (time.time(), module, failure_type, tier, action, int(success), time_to_recover_ms, json.dumps(system_state)),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "INSERT INTO recovery_history (timestamp, module, failure_type, tier, action, success, time_to_recover_ms, system_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), module, failure_type, tier, action, int(success), time_to_recover_ms, json.dumps(system_state)),
+            )
+            self._conn.commit()
 
     def query_recovery(
         self,
