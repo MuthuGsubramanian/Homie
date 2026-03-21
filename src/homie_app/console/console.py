@@ -239,14 +239,16 @@ class Console:
         self._shutdown()
 
     def _chat(self, user_input: str):
-        """Send input to brain with Homie-branded thinking animation."""
+        """Send input to brain with Homie-branded thinking animation.
+
+        Brain calls run in the MAIN thread (SQLite safety).
+        The thinking animation runs in a BACKGROUND thread (UI only, no DB).
+        """
         from rich.live import Live
         from rich.markdown import Markdown
         from rich.panel import Panel
         from rich.text import Text
-        from rich.table import Table
-        from rich.align import Align
-        import random, itertools, time, threading
+        import random, itertools, threading, time
 
         _THINKING = [
             "Perceiving context",
@@ -261,126 +263,102 @@ class Console:
             "Resolving context layers",
         ]
 
-        # Animated waveform bar — cycles through these glyphs
         _WAVE = "░▒▓█▓▒░"
 
-        def _build_thinking_panel(frame: int, msg: str) -> Panel:
-            """Build the animated thinking panel for a given frame."""
-            # Scrolling wave bar
-            bar_width = 32
-            wave = ""
-            for i in range(bar_width):
-                idx = (frame + i) % len(_WAVE)
-                wave += _WAVE[idx]
+        class _ThinkingAnimator:
+            """Background thread that animates the thinking panel via a shared Live."""
+            def __init__(self, live: Live):
+                self._live = live
+                self._running = True
+                self._msg_cycle = itertools.cycle(random.sample(_THINKING, len(_THINKING)))
+                self._msg = next(self._msg_cycle)
+                self._frame = 0
+                self._msg_counter = 0
+                self._thread = threading.Thread(target=self._run, daemon=True)
 
-            # Pulsing dots after message
-            dots = "." * ((frame // 3) % 4)
+            def start(self):
+                self._thread.start()
 
-            content = Text()
-            content.append("  ")
-            content.append(wave, style="cyan")
-            content.append("\n\n")
-            content.append(f"  {msg}{dots}", style="bold cyan")
-            content.append("\n")
+            def stop(self):
+                self._running = False
+                self._thread.join(timeout=2)
 
-            return Panel(
-                content,
-                title="[bold cyan]◆ Homie[/]",
-                border_style="cyan",
-                padding=(0, 1),
-            )
+            def _run(self):
+                while self._running:
+                    bar = "".join(
+                        _WAVE[(self._frame + i) % len(_WAVE)] for i in range(32)
+                    )
+                    dots = "." * ((self._frame // 3) % 4)
+                    content = Text()
+                    content.append("  ")
+                    content.append(bar, style="cyan")
+                    content.append("\n\n")
+                    content.append(f"  {self._msg}{dots}", style="bold cyan")
+                    content.append("\n")
+                    try:
+                        self._live.update(Panel(
+                            content,
+                            title="[bold cyan]◆ Homie[/]",
+                            border_style="cyan",
+                            padding=(0, 1),
+                        ))
+                    except Exception:
+                        break
+                    self._frame += 1
+                    self._msg_counter += 1
+                    if self._msg_counter >= 30:
+                        self._msg = next(self._msg_cycle)
+                        self._msg_counter = 0
+                    time.sleep(0.1)
 
         try:
-            first_token = True
             buffer = ""
-            thinking_done = threading.Event()
-            stream_error = [None]
-            token_queue = []
-
-            # Start streaming in background thread
-            def _stream_worker():
-                try:
-                    for token in self._brain.process_stream(user_input):
-                        token_queue.append(token)
-                        thinking_done.set()
-                except Exception as e:
-                    stream_error[0] = e
-                    thinking_done.set()
-
-            worker = threading.Thread(target=_stream_worker, daemon=True)
-            worker.start()
-
-            # Show animated thinking panel while waiting for first token
-            msg = random.choice(_THINKING)
-            msg_cycle = itertools.cycle(_THINKING)
-            frame = 0
-            msg_counter = 0
+            first_token = True
 
             with Live(console=rc, refresh_per_second=10, transient=True) as live:
-                # Phase 1: Thinking animation until first token
-                while not thinking_done.is_set():
-                    live.update(_build_thinking_panel(frame, msg))
-                    time.sleep(0.1)
-                    frame += 1
-                    msg_counter += 1
-                    if msg_counter >= 30:  # rotate message every ~3s
-                        msg = next(msg_cycle)
-                        msg_counter = 0
+                # Start the thinking animation in background (pure UI, no DB)
+                animator = _ThinkingAnimator(live)
+                animator.start()
 
-            # Check for stream errors
-            if stream_error[0] and not token_queue:
-                raise stream_error[0]
+                try:
+                    # Brain streaming runs in MAIN thread (SQLite safe)
+                    for token in self._brain.process_stream(user_input):
+                        if first_token:
+                            animator.stop()  # kill animation on first token
+                            first_token = False
+                        buffer += token
+                        live.update(Panel(
+                            Markdown(buffer),
+                            title="[homie.assistant]Homie[/]",
+                            border_style="homie.dim",
+                        ))
+                except Exception as e:
+                    animator.stop()
+                    if not first_token:
+                        raise
+                    # Streaming failed — try blocking fallback
+                    first_token = True
+                finally:
+                    if first_token:
+                        animator.stop()
 
-            # Phase 2: Stream response with live markdown panel
-            if token_queue:
-                first_token = False
-                buffer = "".join(token_queue)
-                token_queue.clear()
+            if first_token:
+                # Blocking fallback with simple dots spinner
+                with rc.status(
+                    "[bold cyan]  Processing...[/]",
+                    spinner="dots",
+                    spinner_style="cyan",
+                ):
+                    response = self._brain.process(user_input)
+                buffer = response
 
-                with Live(console=rc, refresh_per_second=12, transient=True) as live:
-                    live.update(Panel(
-                        Markdown(buffer),
-                        title="[homie.assistant]Homie[/]",
-                        border_style="homie.dim",
-                    ))
-                    # Continue consuming tokens from worker thread
-                    worker.join(timeout=0.01)
-                    while worker.is_alive() or token_queue:
-                        if token_queue:
-                            buffer += "".join(token_queue)
-                            token_queue.clear()
-                            live.update(Panel(
-                                Markdown(buffer),
-                                title="[homie.assistant]Homie[/]",
-                                border_style="homie.dim",
-                            ))
-                        else:
-                            time.sleep(0.05)
-                        worker.join(timeout=0.01)
-                    # Drain any remaining tokens
-                    if token_queue:
-                        buffer += "".join(token_queue)
-
-                # Print final panel
+            # Print final response panel
+            if buffer:
                 rc.print(Panel(
                     Markdown(buffer),
                     title="[homie.assistant]Homie[/]",
                     border_style="homie.dim",
                 ))
-            else:
-                # Fallback: blocking mode with spinner
-                with rc.status(
-                    f"[cyan]{msg}...[/]",
-                    spinner="dots",
-                    spinner_style="cyan",
-                ):
-                    response = self._brain.process(user_input)
-                rc.print(Panel(
-                    Markdown(response),
-                    title="[homie.assistant]Homie[/]",
-                    border_style="homie.dim",
-                ))
-
             rc.print()
 
         except ConnectionError as e:
