@@ -44,6 +44,25 @@ class HealthLog:
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_health_ts ON health_events(timestamp)
         """)
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS recovery_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                module TEXT NOT NULL,
+                failure_type TEXT NOT NULL,
+                tier INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                time_to_recover_ms REAL NOT NULL,
+                system_state TEXT NOT NULL
+            )
+        """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_recovery_module ON recovery_history(module)
+        """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_recovery_failure ON recovery_history(failure_type)
+        """)
         self._conn.commit()
 
     def write(self, event: HealthEvent) -> None:
@@ -107,6 +126,66 @@ class HealthLog:
         )
         self._conn.commit()
         return cursor.rowcount
+
+    def write_recovery(
+        self,
+        module: str,
+        failure_type: str,
+        tier: int,
+        action: str,
+        success: bool,
+        time_to_recover_ms: float,
+        system_state: dict,
+    ) -> None:
+        """Write a recovery attempt to the history (append-only)."""
+        if self._conn is None:
+            return
+        self._conn.execute(
+            "INSERT INTO recovery_history (timestamp, module, failure_type, tier, action, success, time_to_recover_ms, system_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (time.time(), module, failure_type, tier, action, int(success), time_to_recover_ms, json.dumps(system_state)),
+        )
+        self._conn.commit()
+
+    def query_recovery(
+        self,
+        module: Optional[str] = None,
+        failure_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Query recovery history."""
+        if self._conn is None:
+            return []
+        clauses = []
+        params: list = []
+        if module:
+            clauses.append("module = ?")
+            params.append(module)
+        if failure_type:
+            clauses.append("failure_type = ?")
+            params.append(failure_type)
+        where = " AND ".join(clauses) if clauses else "1=1"
+        cursor = self._conn.execute(
+            f"SELECT * FROM recovery_history WHERE {where} ORDER BY timestamp DESC LIMIT ?",
+            params + [limit],
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def recovery_pattern_summary(self, module: str, failure_type: str) -> dict:
+        """Summarize recovery patterns for a specific failure type."""
+        if self._conn is None:
+            return {"total": 0, "success_count": 0, "success_rate": 0.0}
+        cursor = self._conn.execute(
+            "SELECT COUNT(*) as total, SUM(success) as successes FROM recovery_history WHERE module = ? AND failure_type = ?",
+            (module, failure_type),
+        )
+        row = cursor.fetchone()
+        total = row["total"] or 0
+        successes = row["successes"] or 0
+        return {
+            "total": total,
+            "success_count": successes,
+            "success_rate": successes / total if total > 0 else 0.0,
+        }
 
     def close(self) -> None:
         """Close the database connection."""
