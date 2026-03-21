@@ -22,17 +22,46 @@ from typing import Any, Optional
 
 from homie_core.rag.chunker import Chunk, auto_chunk
 from homie_core.rag.hybrid_search import HybridSearch
+from homie_core.rag.format_detector import detect_format, DocumentFormat
+from homie_core.rag.parsers import PARSER_REGISTRY, ParsedDocument
+# Import all parsers to trigger registration
+import homie_core.rag.parsers.text
+import homie_core.rag.parsers.pdf
+import homie_core.rag.parsers.docx
+import homie_core.rag.parsers.xlsx
+import homie_core.rag.parsers.pptx
+import homie_core.rag.parsers.html
+import homie_core.rag.parsers.image
+import homie_core.rag.parsers.email_parser
+import homie_core.rag.parsers.code
+import homie_core.rag.parsers.epub
 
 
-# Extensions to index
-_INDEXABLE_EXTENSIONS = {
+# Extensions supported via the legacy text-read path (kept for compatibility)
+_TEXT_READABLE_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".c", ".cpp", ".h",
     ".java", ".rb", ".sh", ".bat",
     ".md", ".mdx", ".rst", ".txt",
     ".yaml", ".yml", ".json", ".toml", ".cfg", ".ini",
     ".html", ".css", ".xml", ".csv",
 }
+# All formats we're willing to index (expanded to include new parser formats)
+_INDEXABLE_EXTENSIONS = _TEXT_READABLE_EXTENSIONS | {
+    ".pdf", ".docx", ".xlsx", ".xls", ".pptx",
+    ".eml", ".msg", ".epub",
+    ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".gif", ".webp",
+    ".ps1", ".swift", ".kt", ".scala", ".r", ".sql", ".lua", ".php",
+    ".pl", ".ex", ".exs", ".zig", ".nim", ".scss", ".less", ".vue", ".svelte",
+    ".log", ".htm",
+}
 _MAX_FILE_SIZE = 2_000_000  # 2MB
+
+# Formats that are binary/structured — skip large-file check differently
+_BINARY_FORMATS = {
+    DocumentFormat.PDF, DocumentFormat.DOCX, DocumentFormat.XLSX,
+    DocumentFormat.PPTX, DocumentFormat.IMAGE, DocumentFormat.EPUB,
+    DocumentFormat.EMAIL,
+}
 
 
 @dataclass
@@ -80,6 +109,37 @@ class RagPipeline:
     # INGEST
     # ------------------------------------------------------------------
 
+    def _parse_any_document(self, path: Path) -> str:
+        """Extract text content from any supported document format.
+
+        Uses the format detector + parser registry for structured formats.
+        Falls back to plain text reading for code/text/unknown formats.
+        Returns empty string on failure.
+        """
+        fmt = detect_format(path)
+
+        # Try the registered parser first (covers PDF, DOCX, XLSX, etc.)
+        parser = PARSER_REGISTRY.get(fmt.value)
+        if parser is not None:
+            try:
+                doc: ParsedDocument = parser(path)
+                content = doc.full_text
+                if content.strip():
+                    return content
+            except Exception:
+                pass  # fall through to text read
+
+        # Binary formats (images, PDF, DOCX, etc.) should not be text-read;
+        # if the parser failed or returned empty, we give up.
+        if fmt in _BINARY_FORMATS:
+            return ""
+
+        # For code, markdown, text, CSV, HTML, and unknown: read as plain text
+        try:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, PermissionError):
+            return ""
+
     def index_file(self, path: str | Path) -> int:
         """Index a single file. Returns number of chunks indexed."""
         path = Path(path)
@@ -91,8 +151,18 @@ class RagPipeline:
             return 0
 
         try:
-            content = path.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, PermissionError):
+            content = self._parse_any_document(path)
+        except Exception:
+            return 0
+
+        # Backward compatibility: if new parser returned nothing, fall back
+        if not content.strip() and path.suffix.lower() in _TEXT_READABLE_EXTENSIONS:
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+            except (OSError, PermissionError):
+                return 0
+
+        if not content.strip():
             return 0
 
         # Skip if unchanged
