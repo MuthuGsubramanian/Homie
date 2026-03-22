@@ -5,6 +5,7 @@ Relationships represent directed edges between entities.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 import uuid
@@ -25,6 +26,7 @@ class Entity:
     attributes: dict = field(default_factory=dict)
     confidence: float = 1.0
     source: str = ""  # "extraction", "user", "inference"
+    aliases: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     last_accessed: str = ""
@@ -46,5 +48,11 @@ class Relationship:
     confidence: float = 1.0
     source: str = ""
     source_chunk_id: str = ""
+    valid_from: float = field(default_factory=time.time)
+    valid_until: Optional[float] = None
     created_at: str = ""
     updated_at: str = ""
+
+    @property
+    def is_current(self) -> bool:
+        return self.valid_until is None
