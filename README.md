@@ -5,7 +5,7 @@
 <h1 align="center">H O M I E&nbsp;&nbsp;A I</h1>
 
 <p align="center">
-  <strong>Your Local AI Companion</strong><br/>
+  <strong>Self-Evolving Local AI Assistant</strong><br/>
   <sub>Fully local. Privacy-first. No cloud. No tracking. Just you and your homie.</sub>
 </p>
 
@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="Python" />
   <img src="https://img.shields.io/badge/license-MPL--2.0-green?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/cloud_calls-0-gold?style=flat-square" alt="Cloud Calls" />
@@ -25,54 +26,72 @@
 
 ---
 
-## ▸ QUEST LOG
+## Quick Start
 
 ```bash
-# 01 — Install
 pip install homie-ai
-
-# 02 — Setup (detects hardware, downloads a model)
-homie init
-
-# 03 — Say hey
-homie chat
+homie init        # detects hardware, downloads a model
+homie start       # say hey
 ```
 
-That's it. No accounts. No API keys. No cloud.
+No accounts. No API keys. No cloud.
 
 ---
 
-## ▸ EQUIPPED ABILITIES
+## Core Intelligence
 
-| Ability | Level | Description |
-|---------|-------|-------------|
-| **VOICE** | `LVL MAX` | Talk to your AI. It talks back. Wake word, push-to-talk, or full conversation. |
-| **MEMORY** | `LVL MAX` | Learns your habits, remembers your context. Working, episodic & semantic memory. |
-| **PRIVACY** | `LVL MAX` | AES-256 vault. Zero telemetry. Your data never leaves your machine. Ever. |
-| **PLUGINS** | `12 SLOTS` | Browser, clipboard, IDE, git, terminal, health, music, notes — and more. |
-| **BEHAVIORAL AI** | `LVL MAX` | Habit detection, routine observation, profile synthesis. |
-| **LOCAL INFERENCE** | `LVL MAX` | GGUF models via llama.cpp with full GPU acceleration (CUDA/Metal). |
+### Self-Evolution Sub-Systems
+
+Homie ships with 5 autonomous sub-systems that allow it to grow and adapt without manual intervention:
+
+| Sub-System | What It Does |
+|------------|-------------|
+| **Self-Healing Watchdog** | Monitors system health, detects failures, and auto-repairs configuration and runtime issues. |
+| **Adaptive Learning** | Learns your preferences implicitly from interactions -- adjusts tone, verbosity, and behavior over time. |
+| **Meta-Learning** | Tracks which strategies work best across tasks and optimizes its own reasoning pipeline. |
+| **Memory Consolidation** | Merges working, episodic, and semantic memory layers -- forgets noise, strengthens signal. |
+| **Plugin Auto-Discovery** | Detects installed tools and services, auto-registers them as callable tools for the agentic loop. |
+
+### Neural Reasoning Engine
+
+An agentic cognitive architecture with multi-step planning, tool use, and chain-of-thought reasoning. The brain decomposes complex requests into sub-tasks, executes tools, and synthesizes results -- running entirely on local hardware.
+
+### Local ML Pipeline
+
+- GGUF model inference via llama.cpp with full CUDA/Metal GPU acceleration
+- Automatic GPU layer calculation based on available VRAM
+- Model registry with hot-swapping between local, Hugging Face, and cloud models
+- Inference router with automatic fallback (local -> cloud)
+
+### Multimodal Intelligence
+
+- **Voice**: Wake word detection, speech-to-text (Whisper), text-to-speech (Piper/Kokoro/MeloTTS), push-to-talk and continuous conversation modes
+- **Screen Reading**: OCR-based screen understanding for context-aware assistance
+- **Document Ingestion**: RAG pipeline over PDFs, DOCX, EPUB, PPTX, XLSX, and web pages via vector search (ChromaDB)
 
 ---
 
-## ▸ CHARACTER STATS
+## Production Features
 
-```
-┌─────────────────────────────────────────────────┐
-│  100% LOCAL    0 CLOUD CALLS    20+ MODULES     │
-│                                                 │
-│  ∞ PRIVACY     AES-256 VAULT    MPL-2.0 OPEN   │
-└─────────────────────────────────────────────────┘
-```
+| Feature | Description |
+|---------|-------------|
+| **Voice Pipeline** | Full duplex voice with wake word ("hey homie"), STT, TTS, and conversation mode. |
+| **Desktop Notifications** | System tray integration with toast notifications (Windows/Linux/macOS). |
+| **Social & Messaging** | Telegram integration, social media plugins. |
+| **Email** | Gmail read/draft via OAuth (no passwords stored). |
+| **Encrypted Vault** | AES-256-GCM encrypted credential storage with OS keyring integration. |
+| **Background Daemon** | Runs headless as a system service for always-on intelligence. |
+| **Plugin System** | 12+ built-in plugins: git, terminal, clipboard, browser, IDE, notes, health, music, and more. |
+| **Backup & Restore** | Encrypted backup/restore of all memories and configuration. |
 
 ---
 
-## ▸ SYSTEM COMMANDS
+## System Commands
 
 ```
-homie start            Start the assistant (alias for chat)
-homie chat             Interactive chat mode
+homie start            Start the assistant
 homie init             First-time setup wizard
+homie daemon           Run as background service
 homie model list       List installed models
 homie model add        Register a local model file
 homie model switch     Switch the active model
@@ -84,7 +103,22 @@ homie restore --from   Restore from backup
 
 ---
 
-## ▸ MODEL SETUP
+## Installation Options
+
+```bash
+pip install homie-ai              # Core (text chat, memory, plugins)
+pip install homie-ai[voice]       # + Voice pipeline (STT, TTS, wake word)
+pip install homie-ai[neural]      # + ONNX neural reasoning
+pip install homie-ai[docs]        # + Document ingestion (PDF, DOCX, EPUB)
+pip install homie-ai[app]         # + Dashboard, system tray, scheduling
+pip install homie-ai[all]         # Everything
+```
+
+Platform installers (Windows MSI, Linux DEB/RPM/AppImage, macOS DMG) are available on the [releases page](https://github.com/MSG-88/Homie/releases).
+
+---
+
+## Model Setup
 
 Homie uses [llama.cpp](https://github.com/ggml-org/llama.cpp) for local inference. Download the server binary from the [releases page](https://github.com/ggml-org/llama.cpp/releases) and place it in `~/.homie/llama-server/`.
 
@@ -97,10 +131,10 @@ homie model switch my-model
 
 ---
 
-## ▸ CONFIGURATION
+## Configuration
 
 ```yaml
-# homie.config.yaml — in working directory or ~/.homie/
+# homie.config.yaml
 
 llm:
   backend: gguf
@@ -123,46 +157,20 @@ storage:
 
 ---
 
-## ▸ OPTIONAL MODULES
-
-```bash
-pip install homie-ai[model]      # HuggingFace model downloading
-pip install homie-ai[voice]      # Voice pipeline (STT, TTS, wake word)    ~2 GB
-pip install homie-ai[context]    # System context tracking
-pip install homie-ai[storage]    # Vector DB and encrypted backups
-pip install homie-ai[app]        # Dashboard, system tray, scheduling
-pip install homie-ai[all]        # FULL SUIT
-```
-
----
-
-## ▸ MINIMUM SPECS
+## Minimum Specs
 
 | | Requirement |
 |---|---|
 | **CPU** | Any modern x86/ARM |
 | **RAM** | 8 GB minimum |
-| **GPU** | Optional — CUDA/Metal (+10x speed) |
-| **DISK** | 2 GB + model size |
-| **PYTHON** | 3.11+ |
-| **INTERNET** | Only for install, then fully offline |
+| **GPU** | Optional -- CUDA/Metal (+10x speed) |
+| **Disk** | 2 GB + model size |
+| **Python** | 3.11+ |
+| **Internet** | Only for install, then fully offline |
 
 ---
 
-## ▸ TECH INVENTORY
-
-| Component | Role |
-|-----------|------|
-| Python | Core |
-| llama.cpp | Engine |
-| SQLite | Storage |
-| ChromaDB | Vectors |
-| Whisper | Voice |
-| AES-256-GCM | Vault |
-
----
-
-## ▸ LICENSE
+## License
 
 [Mozilla Public License 2.0](LICENSE)
 
