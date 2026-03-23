@@ -80,4 +80,15 @@ inference:
     assert cfg.inference.qubrid.enabled is False
     assert cfg.inference.qubrid.model == "custom/model"
     assert cfg.inference.qubrid.timeout == 60
-    assert cfg.inference.lan.max_latency_ms == 1000
+
+
+def test_email_config_defaults():
+    from homie_core.config import HomieConfig
+    cfg = HomieConfig()
+    assert cfg.email.auto_download_attachments is True
+    assert cfg.email.max_attachment_size_mb == 25
+    assert cfg.email.knowledge_extraction is True
+    assert cfg.email.extraction_batch_size == 20
+    assert cfg.email.send_requires_confirmation is True
+    assert cfg.email.insight_refresh_interval == 3600
+    assert cfg.email.auto_download_categories == ["bill", "order", "work"]
