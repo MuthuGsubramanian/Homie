@@ -103,3 +103,21 @@ class TestEmailUnreadTool:
         result = tool.execute()
         data = json.loads(result)
         assert "high" in data
+
+
+class TestNewToolRegistration:
+    def test_registers_all_new_tools(self):
+        registry = MagicMock()
+        service = MagicMock()
+        register_email_tools(registry, service)
+        registered_names = {call.args[0].name for call in registry.register.call_args_list}
+        expected_new = {
+            "email_inbox_threads", "email_thread_full", "email_unread_counts",
+            "email_list_drafts", "email_get_draft", "email_update_draft", "email_delete_draft",
+            "email_send", "email_send_draft", "email_reply", "email_reply_all", "email_forward",
+            "email_attachments", "email_download_attachment",
+            "email_contact_insights", "email_topic_summary",
+            "email_pending_actions", "email_briefing",
+        }
+        for name in expected_new:
+            assert name in registered_names, f"Missing tool: {name}"
