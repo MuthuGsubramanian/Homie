@@ -148,3 +148,64 @@ class TestGmailProviderActions:
         labels = provider.list_labels()
         assert len(labels) == 2
         assert labels[0].id == "INBOX"
+
+
+from homie_core.email.models import EmailThread
+
+
+class TestGmailProviderThreads:
+    def test_get_thread(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+
+        service.users().threads().get().execute.return_value = {
+            "id": "t1",
+            "messages": [
+                _make_gmail_message(msg_id="msg1", thread_id="t1"),
+                _make_gmail_message(msg_id="msg2", thread_id="t1", subject="Re: Test"),
+            ],
+        }
+
+        thread = provider.get_thread("t1")
+        assert thread.id == "t1"
+        assert len(thread.messages) == 2
+        assert thread.messages[0].id == "msg1"
+
+    def test_get_inbox_threads(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+
+        service.users().threads().list().execute.return_value = {
+            "threads": [{"id": "t1"}, {"id": "t2"}],
+        }
+        service.users().threads().get().execute.side_effect = [
+            {"id": "t1", "messages": [_make_gmail_message(msg_id="msg1", thread_id="t1")]},
+            {"id": "t2", "messages": [_make_gmail_message(msg_id="msg2", thread_id="t2")]},
+        ]
+
+        threads = provider.get_inbox_threads(max_results=10)
+        assert len(threads) == 2
+
+    def test_get_unread_count(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().labels().get().execute.return_value = {"messagesUnread": 5}
+        count = provider.get_unread_count("INBOX")
+        assert count == 5
+
+    def test_archive_thread(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        provider.archive_thread("t1")
+        service.users().threads().modify.assert_called()
+
+    def test_trash_thread(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        provider.trash_thread("t1")
+        service.users().threads().trash.assert_called()
