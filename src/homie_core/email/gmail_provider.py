@@ -10,7 +10,7 @@ import email.mime.text
 import time
 from typing import Any
 
-from homie_core.email.models import EmailMessage, HistoryChange, Label
+from homie_core.email.models import EmailMessage, EmailThread, HistoryChange, Label
 from homie_core.email.provider import EmailProvider
 
 
@@ -283,41 +283,56 @@ class GmailProvider(EmailProvider):
         ).execute()
         return Label(id=result["id"], name=result["name"], type=result.get("type", "user"))
 
-    def get_thread(self, thread_id):
-        raise NotImplementedError
+    def get_thread(self, thread_id: str) -> EmailThread:
+        self._check_token_freshness()
+        raw = self._service.users().threads().get(userId="me", id=thread_id, format="full").execute()
+        return self._parse_thread(raw)
 
-    def list_threads(self, query, max_results=20):
-        raise NotImplementedError
+    def list_threads(self, query: str, max_results: int = 20) -> list[EmailThread]:
+        self._check_token_freshness()
+        response = self._service.users().threads().list(userId="me", q=query, maxResults=max_results).execute()
+        threads = []
+        for t in response.get("threads", []):
+            raw = self._service.users().threads().get(userId="me", id=t["id"], format="full").execute()
+            threads.append(self._parse_thread(raw))
+        return threads
 
     def get_inbox_threads(self, start=0, max_results=20):
-        raise NotImplementedError
+        return self.list_threads("in:inbox", max_results=max_results)
 
     def get_starred_threads(self, start=0, max_results=20):
-        raise NotImplementedError
+        return self.list_threads("is:starred", max_results=max_results)
 
     def get_spam_threads(self, start=0, max_results=20):
-        raise NotImplementedError
+        return self.list_threads("in:spam", max_results=max_results)
 
     def get_trash_threads(self, start=0, max_results=20):
-        raise NotImplementedError
+        return self.list_threads("in:trash", max_results=max_results)
 
     def get_unread_count(self, label="INBOX"):
-        raise NotImplementedError
+        self._check_token_freshness()
+        result = self._service.users().labels().get(userId="me", id=label).execute()
+        return result.get("messagesUnread", 0)
 
     def archive_thread(self, thread_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().threads().modify(userId="me", id=thread_id, body={"removeLabelIds": ["INBOX"]}).execute()
 
     def trash_thread(self, thread_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().threads().trash(userId="me", id=thread_id).execute()
 
     def apply_label_to_thread(self, thread_id, label_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().threads().modify(userId="me", id=thread_id, body={"addLabelIds": [label_id]}).execute()
 
     def mark_thread_read(self, thread_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().threads().modify(userId="me", id=thread_id, body={"removeLabelIds": ["UNREAD"]}).execute()
 
     def mark_thread_unread(self, thread_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().threads().modify(userId="me", id=thread_id, body={"addLabelIds": ["UNREAD"]}).execute()
 
     def list_drafts(self, max_results=20):
         raise NotImplementedError
@@ -424,4 +439,21 @@ class GmailProvider(EmailProvider):
             is_starred="STARRED" in label_ids,
             has_attachments=has_attachments,
             attachment_names=attachment_names,
+        )
+
+    def _parse_thread(self, raw: dict) -> EmailThread:
+        """Parse a Gmail API thread dict into EmailThread."""
+        messages = [self._parse_message(m) for m in raw.get("messages", [])]
+        participants = list({m.sender for m in messages} | {r for m in messages for r in m.recipients})
+        last_msg = messages[-1] if messages else None
+        return EmailThread(
+            id=raw["id"],
+            account_id=self._account_id,
+            subject=messages[0].subject if messages else "",
+            participants=participants,
+            message_count=len(messages),
+            last_message_date=last_msg.date if last_msg else 0.0,
+            snippet=last_msg.snippet if last_msg else "",
+            labels=list({lbl for m in messages for lbl in m.labels}),
+            messages=messages,
         )
