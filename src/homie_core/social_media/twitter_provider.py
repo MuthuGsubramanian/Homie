@@ -270,6 +270,68 @@ class TwitterProvider(
             return {"status": "error", "platform": "twitter"}
 
     # ------------------------------------------------------------------
+    # Convenience helpers (task-specific public API)
+    # ------------------------------------------------------------------
+
+    def get_timeline(self, count: int = 20) -> list[dict]:
+        """Fetch the authenticated user's home timeline as raw dicts."""
+        try:
+            data = self._call(
+                "GET",
+                f"/users/{self._user_id}/timelines/reverse_chronological",
+                params={
+                    "max_results": count,
+                    "tweet.fields": "created_at,author_id,public_metrics,text",
+                },
+            )
+            return data.get("data", [])
+        except Exception:
+            logger.exception("get_timeline failed")
+            return []
+
+    def get_mentions(self, count: int = 20) -> list[dict]:
+        """Fetch recent mentions for the authenticated user."""
+        try:
+            data = self._call(
+                "GET",
+                f"/users/{self._user_id}/mentions",
+                params={
+                    "max_results": count,
+                    "tweet.fields": "created_at,author_id,public_metrics,text",
+                },
+            )
+            return data.get("data", [])
+        except Exception:
+            logger.exception("get_mentions failed")
+            return []
+
+    def post_tweet(self, text: str) -> dict:
+        """Post a tweet and return the API response data."""
+        try:
+            data = self._call("POST", "/tweets", json_body={"text": text})
+            return data.get("data", {})
+        except Exception:
+            logger.exception("post_tweet failed")
+            return {}
+
+    def search(self, query: str, count: int = 10) -> list[dict]:
+        """Search recent tweets and return raw dicts."""
+        try:
+            data = self._call(
+                "GET",
+                "/tweets/search/recent",
+                params={
+                    "query": query,
+                    "max_results": max(count, 10),
+                    "tweet.fields": "created_at,author_id,public_metrics,text",
+                },
+            )
+            return data.get("data", [])
+        except Exception:
+            logger.exception("search failed")
+            return []
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
