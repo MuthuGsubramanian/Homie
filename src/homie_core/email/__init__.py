@@ -67,6 +67,12 @@ class EmailService:
                 label_ids = self._ensure_homie_labels(provider)
 
                 organizer = EmailOrganizer(provider=provider, label_ids=label_ids)
+                from homie_core.email.knowledge_extractor import EmailKnowledgeExtractor
+                knowledge_extractor = EmailKnowledgeExtractor(
+                    cache_conn=self._conn,
+                    graph=getattr(self, '_knowledge_graph', None),
+                    model_engine=self._model_engine,
+                )
                 engine = SyncEngine(
                     provider=provider,
                     classifier=classifier,
@@ -75,6 +81,7 @@ class EmailService:
                     organizer=organizer,
                     vault=self._vault,
                     working_memory=self._working_memory,
+                    knowledge_extractor=knowledge_extractor,
                 )
 
                 config = self._load_config(account_id)

@@ -40,6 +40,7 @@ class SyncEngine:
         organizer=None,
         vault=None,
         working_memory=None,
+        knowledge_extractor=None,
     ):
         self._provider = provider
         self._classifier = classifier
@@ -49,6 +50,7 @@ class SyncEngine:
         self._vault = vault
         self._working_memory = working_memory
         self._llm_enabled = classifier.has_llm
+        self._knowledge_extractor = knowledge_extractor
 
     def initial_sync(self) -> SyncResult:
         """Full sync — fetch last 7 days, classify, organize, store."""
@@ -61,6 +63,15 @@ class SyncEngine:
 
             for msg in messages:
                 self._classify_and_organize(msg, result, config=None)
+
+            # Batch knowledge extraction
+            if self._knowledge_extractor:
+                try:
+                    self._knowledge_extractor.batch_extract(messages)
+                    self._knowledge_extractor.build_contact_graph()
+                    self._knowledge_extractor.build_topic_clusters()
+                except Exception:
+                    pass
 
             self._evict_old_emails()
 
@@ -218,6 +229,13 @@ class SyncEngine:
                     "priority": msg.priority,
                     "snippet": msg.snippet,
                 })
+
+        # Knowledge extraction
+        if self._knowledge_extractor:
+            try:
+                self._knowledge_extractor.process_message(msg)
+            except Exception:
+                pass
 
     def _evict_old_emails(self) -> None:
         """Remove emails older than 90 days from cache."""
