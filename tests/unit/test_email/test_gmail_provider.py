@@ -256,3 +256,48 @@ class TestGmailProviderDrafts:
         service.users().drafts().update().execute.return_value = {"id": "d1"}
         result = provider.update_draft("d1", to="bob@x.com", subject="Updated", body="New body")
         assert result == "d1"
+
+
+class TestGmailProviderSend:
+    def test_send_email(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().messages().send().execute.return_value = {"id": "sent1"}
+        msg_id = provider.send_email(to="bob@x.com", subject="Hello", body="Hi Bob")
+        assert msg_id == "sent1"
+
+    def test_send_draft(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().drafts().send().execute.return_value = {"id": "sent2"}
+        msg_id = provider.send_draft("d1")
+        assert msg_id == "sent2"
+
+    def test_reply_creates_draft_by_default(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().messages().get().execute.return_value = _make_gmail_message(msg_id="orig1", thread_id="t1")
+        service.users().drafts().create().execute.return_value = {"id": "draft_reply"}
+        result = provider.reply("orig1", body="Thanks!", send=False)
+        assert result == "draft_reply"
+
+    def test_reply_sends_when_flag_true(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().messages().get().execute.return_value = _make_gmail_message(msg_id="orig1", thread_id="t1")
+        service.users().messages().send().execute.return_value = {"id": "sent_reply"}
+        result = provider.reply("orig1", body="Thanks!", send=True)
+        assert result == "sent_reply"
+
+    def test_forward_creates_draft(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().messages().get().execute.return_value = _make_gmail_message(msg_id="orig1", thread_id="t1")
+        service.users().drafts().create().execute.return_value = {"id": "draft_fwd"}
+        result = provider.forward("orig1", to="charlie@x.com", body="FYI", send=False)
+        assert result == "draft_fwd"
