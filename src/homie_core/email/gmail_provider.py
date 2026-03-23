@@ -7,6 +7,10 @@ from __future__ import annotations
 
 import base64
 import email.mime.text
+import email.mime.multipart
+import email.mime.base
+import mimetypes
+import os
 import time
 from typing import Any
 
@@ -368,19 +372,104 @@ class GmailProvider(EmailProvider):
         self._service.users().drafts().delete(userId="me", id=draft_id).execute()
 
     def send_email(self, to, subject, body, cc=None, bcc=None, attachments=None, reply_to_message_id=None):
-        raise NotImplementedError
+        self._check_token_freshness()
+        if attachments:
+            mime_msg = self._build_mime_with_attachments(to, subject, body, cc, bcc, attachments, reply_to_message_id)
+        else:
+            mime_msg = email.mime.text.MIMEText(body)
+            mime_msg["To"] = to
+            mime_msg["Subject"] = subject
+            if cc:
+                mime_msg["Cc"] = ", ".join(cc)
+            if bcc:
+                mime_msg["Bcc"] = ", ".join(bcc)
+            if reply_to_message_id:
+                mime_msg["In-Reply-To"] = reply_to_message_id
+                mime_msg["References"] = reply_to_message_id
+        encoded = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+        result = self._service.users().messages().send(userId="me", body={"raw": encoded}).execute()
+        return result["id"]
 
     def send_draft(self, draft_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        result = self._service.users().drafts().send(userId="me", body={"id": draft_id}).execute()
+        return result["id"]
 
     def reply(self, message_id, body, send=False):
-        raise NotImplementedError
+        self._check_token_freshness()
+        original = self._fetch_and_parse(message_id)
+        raw_msg = self._service.users().messages().get(
+            userId="me", id=message_id, format="metadata",
+            metadataHeaders=["Message-ID", "Subject", "From"]
+        ).execute()
+        headers = raw_msg.get("payload", {}).get("headers", [])
+        message_id_header = _header(headers, "Message-ID")
+
+        mime_msg = email.mime.text.MIMEText(body)
+        mime_msg["To"] = original.sender
+        mime_msg["Subject"] = f"Re: {original.subject}" if not original.subject.startswith("Re:") else original.subject
+        mime_msg["In-Reply-To"] = message_id_header
+        mime_msg["References"] = message_id_header
+
+        encoded = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+        msg_body = {"raw": encoded, "threadId": original.thread_id}
+
+        if send:
+            result = self._service.users().messages().send(userId="me", body=msg_body).execute()
+        else:
+            result = self._service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
+        return result["id"]
 
     def reply_all(self, message_id, body, send=False):
-        raise NotImplementedError
+        self._check_token_freshness()
+        original = self._fetch_and_parse(message_id)
+        raw_msg = self._service.users().messages().get(
+            userId="me", id=message_id, format="metadata",
+            metadataHeaders=["Message-ID", "Subject", "From", "To", "Cc"]
+        ).execute()
+        headers = raw_msg.get("payload", {}).get("headers", [])
+        message_id_header = _header(headers, "Message-ID")
+
+        all_recipients = set()
+        all_recipients.add(original.sender)
+        for r in original.recipients:
+            all_recipients.add(r)
+        all_recipients.discard(self._account_id)
+
+        mime_msg = email.mime.text.MIMEText(body)
+        mime_msg["To"] = ", ".join(all_recipients)
+        mime_msg["Subject"] = f"Re: {original.subject}" if not original.subject.startswith("Re:") else original.subject
+        mime_msg["In-Reply-To"] = message_id_header
+        mime_msg["References"] = message_id_header
+
+        encoded = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+        msg_body = {"raw": encoded, "threadId": original.thread_id}
+
+        if send:
+            result = self._service.users().messages().send(userId="me", body=msg_body).execute()
+        else:
+            result = self._service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
+        return result["id"]
 
     def forward(self, message_id, to, body, send=False):
-        raise NotImplementedError
+        self._check_token_freshness()
+        original = self._fetch_and_parse(message_id)
+        original_body = self.fetch_message_body(message_id)
+
+        forward_body = f"{body}\n\n---------- Forwarded message ----------\nFrom: {original.sender}\nSubject: {original.subject}\n\n{original_body}"
+
+        mime_msg = email.mime.text.MIMEText(forward_body)
+        mime_msg["To"] = to
+        mime_msg["Subject"] = f"Fwd: {original.subject}" if not original.subject.startswith("Fwd:") else original.subject
+
+        encoded = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+        msg_body = {"raw": encoded}
+
+        if send:
+            result = self._service.users().messages().send(userId="me", body=msg_body).execute()
+        else:
+            result = self._service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
+        return result["id"]
 
     def get_attachments(self, message_id):
         raise NotImplementedError
