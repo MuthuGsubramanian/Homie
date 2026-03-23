@@ -209,3 +209,50 @@ class TestGmailProviderThreads:
         provider._service = service
         provider.trash_thread("t1")
         service.users().threads().trash.assert_called()
+
+
+from homie_core.email.models import EmailDraft
+
+
+class TestGmailProviderDrafts:
+    def test_list_drafts(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().drafts().list().execute.return_value = {
+            "drafts": [{"id": "d1", "message": _make_gmail_message(msg_id="msg1")}],
+        }
+        service.users().drafts().get().execute.return_value = {
+            "id": "d1",
+            "message": _make_gmail_message(msg_id="msg1"),
+        }
+        drafts = provider.list_drafts()
+        assert len(drafts) == 1
+        assert drafts[0].id == "d1"
+
+    def test_get_draft(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().drafts().get().execute.return_value = {
+            "id": "d1",
+            "message": _make_gmail_message(msg_id="msg1", subject="My Draft"),
+        }
+        draft = provider.get_draft("d1")
+        assert draft.id == "d1"
+        assert draft.message.subject == "My Draft"
+
+    def test_delete_draft(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        provider.delete_draft("d1")
+        service.users().drafts().delete.assert_called()
+
+    def test_update_draft(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+        service.users().drafts().update().execute.return_value = {"id": "d1"}
+        result = provider.update_draft("d1", to="bob@x.com", subject="Updated", body="New body")
+        assert result == "d1"

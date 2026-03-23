@@ -10,7 +10,7 @@ import email.mime.text
 import time
 from typing import Any
 
-from homie_core.email.models import EmailMessage, EmailThread, HistoryChange, Label
+from homie_core.email.models import EmailDraft, EmailMessage, EmailThread, HistoryChange, Label
 from homie_core.email.provider import EmailProvider
 
 
@@ -335,16 +335,37 @@ class GmailProvider(EmailProvider):
         self._service.users().threads().modify(userId="me", id=thread_id, body={"addLabelIds": ["UNREAD"]}).execute()
 
     def list_drafts(self, max_results=20):
-        raise NotImplementedError
+        self._check_token_freshness()
+        response = self._service.users().drafts().list(userId="me", maxResults=max_results).execute()
+        drafts = []
+        for d in response.get("drafts", []):
+            raw = self._service.users().drafts().get(userId="me", id=d["id"], format="full").execute()
+            drafts.append(self._parse_draft(raw))
+        return drafts
 
     def get_draft(self, draft_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        raw = self._service.users().drafts().get(userId="me", id=draft_id, format="full").execute()
+        return self._parse_draft(raw)
 
     def update_draft(self, draft_id, to, subject, body, cc=None, bcc=None):
-        raise NotImplementedError
+        self._check_token_freshness()
+        mime_msg = email.mime.text.MIMEText(body)
+        mime_msg["To"] = to
+        mime_msg["Subject"] = subject
+        if cc:
+            mime_msg["Cc"] = ", ".join(cc)
+        if bcc:
+            mime_msg["Bcc"] = ", ".join(bcc)
+        encoded = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+        result = self._service.users().drafts().update(
+            userId="me", id=draft_id, body={"message": {"raw": encoded}}
+        ).execute()
+        return result["id"]
 
     def delete_draft(self, draft_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        self._service.users().drafts().delete(userId="me", id=draft_id).execute()
 
     def send_email(self, to, subject, body, cc=None, bcc=None, attachments=None, reply_to_message_id=None):
         raise NotImplementedError
@@ -457,3 +478,10 @@ class GmailProvider(EmailProvider):
             labels=list({lbl for m in messages for lbl in m.labels}),
             messages=messages,
         )
+
+    def _parse_draft(self, raw: dict):
+        """Parse a Gmail API draft dict into EmailDraft."""
+        from homie_core.email.models import EmailDraft
+        msg_raw = raw.get("message", {})
+        msg = self._parse_message(msg_raw)
+        return EmailDraft(id=raw["id"], message=msg, updated_at=time.time())
