@@ -372,6 +372,16 @@ class ModelEvolutionConfig(BaseModel):
     dpo_collection: bool = True
 
 
+class EmailConfig(BaseModel):
+    auto_download_attachments: bool = True
+    auto_download_categories: list[str] = ["bill", "order", "work"]
+    max_attachment_size_mb: int = 25
+    knowledge_extraction: bool = True
+    extraction_batch_size: int = 20
+    insight_refresh_interval: int = 3600
+    send_requires_confirmation: bool = True
+
+
 class HomieConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
@@ -393,6 +403,7 @@ class HomieConfig(BaseModel):
     adaptive_learning: AdaptiveLearningConfig = Field(default_factory=AdaptiveLearningConfig)
     knowledge_graph: KnowledgeGraphConfig = Field(default_factory=KnowledgeGraphConfig)
     model_evolution: ModelEvolutionConfig = Field(default_factory=ModelEvolutionConfig)
+    email: EmailConfig = Field(default_factory=EmailConfig)
 
 
 def _apply_env_overrides(cfg: HomieConfig) -> HomieConfig:
