@@ -14,7 +14,7 @@ import os
 import time
 from typing import Any
 
-from homie_core.email.models import EmailDraft, EmailMessage, EmailThread, HistoryChange, Label
+from homie_core.email.models import EmailAttachment, EmailDraft, EmailMessage, EmailThread, HistoryChange, Label
 from homie_core.email.provider import EmailProvider
 
 
@@ -472,10 +472,33 @@ class GmailProvider(EmailProvider):
         return result["id"]
 
     def get_attachments(self, message_id):
-        raise NotImplementedError
+        self._check_token_freshness()
+        raw = self._service.users().messages().get(userId="me", id=message_id, format="full").execute()
+        attachments = []
+        for part in raw.get("payload", {}).get("parts", []):
+            filename = part.get("filename", "")
+            if filename:
+                body = part.get("body", {})
+                attachments.append(EmailAttachment(
+                    id=body.get("attachmentId", ""),
+                    message_id=message_id,
+                    filename=filename,
+                    mime_type=part.get("mimeType", "application/octet-stream"),
+                    size=body.get("size", 0),
+                ))
+        return attachments
 
     def download_attachment(self, message_id, attachment_id, save_path):
-        raise NotImplementedError
+        self._check_token_freshness()
+        result = self._service.users().messages().attachments().get(
+            userId="me", messageId=message_id, id=attachment_id
+        ).execute()
+        data = base64.urlsafe_b64decode(result["data"])
+        os.makedirs(save_path, exist_ok=True)
+        file_path = os.path.join(save_path, attachment_id)
+        with open(file_path, "wb") as f:
+            f.write(data)
+        return file_path
 
     def get_aliases(self):
         raise NotImplementedError
@@ -500,6 +523,33 @@ class GmailProvider(EmailProvider):
 
     def untrash(self, message_id):
         raise NotImplementedError
+
+    def _build_mime_with_attachments(self, to, subject, body, cc, bcc, file_paths, reply_to_message_id=None):
+        """Build multipart MIME message with file attachments."""
+        msg = email.mime.multipart.MIMEMultipart()
+        msg["To"] = to
+        msg["Subject"] = subject
+        if cc:
+            msg["Cc"] = ", ".join(cc)
+        if bcc:
+            msg["Bcc"] = ", ".join(bcc)
+        if reply_to_message_id:
+            msg["In-Reply-To"] = reply_to_message_id
+            msg["References"] = reply_to_message_id
+        msg.attach(email.mime.text.MIMEText(body))
+        for path in file_paths:
+            content_type, _ = mimetypes.guess_type(path)
+            if content_type is None:
+                content_type = "application/octet-stream"
+            maintype, subtype = content_type.split("/", 1)
+            with open(path, "rb") as f:
+                attachment = email.mime.base.MIMEBase(maintype, subtype)
+                attachment.set_payload(f.read())
+            import email.encoders
+            email.encoders.encode_base64(attachment)
+            attachment.add_header("Content-Disposition", "attachment", filename=os.path.basename(path))
+            msg.attach(attachment)
+        return msg
 
     # --- Internal helpers ---
 

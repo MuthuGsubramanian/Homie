@@ -301,3 +301,50 @@ class TestGmailProviderSend:
         service.users().drafts().create().execute.return_value = {"id": "draft_fwd"}
         result = provider.forward("orig1", to="charlie@x.com", body="FYI", send=False)
         assert result == "draft_fwd"
+
+
+from homie_core.email.models import EmailAttachment
+import os
+
+
+class TestGmailProviderAttachments:
+    def test_get_attachments(self):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+
+        service.users().messages().get().execute.return_value = {
+            "id": "msg1", "threadId": "t1", "snippet": "",
+            "labelIds": ["INBOX"], "internalDate": "1710288000000",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Test"},
+                    {"name": "From", "value": "alice@x.com"},
+                    {"name": "To", "value": "user@gmail.com"},
+                ],
+                "parts": [
+                    {"filename": "report.pdf", "mimeType": "application/pdf",
+                     "body": {"attachmentId": "att1", "size": 1024}},
+                    {"filename": "photo.jpg", "mimeType": "image/jpeg",
+                     "body": {"attachmentId": "att2", "size": 2048}},
+                ],
+            },
+        }
+
+        attachments = provider.get_attachments("msg1")
+        assert len(attachments) == 2
+        assert attachments[0].filename == "report.pdf"
+        assert attachments[0].size == 1024
+
+    def test_download_attachment(self, tmp_path):
+        provider = GmailProvider(account_id="user@gmail.com")
+        service = _mock_service()
+        provider._service = service
+
+        service.users().messages().attachments().get().execute.return_value = {
+            "data": base64.urlsafe_b64encode(b"file content").decode(),
+        }
+
+        save_dir = str(tmp_path / "attachments")
+        path = provider.download_attachment("msg1", "att1", save_dir)
+        assert os.path.exists(path)
