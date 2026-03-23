@@ -205,6 +205,19 @@ knowledge_graph:
   temporal:
     confidence_decay_rate: 0.99
     contradiction_auto_resolve: true
+model_evolution:
+  enabled: true
+  ollama_registry_name: MSG-88/Homie
+  ollama_base_model: lfm2
+  milestones_min_facts: 50
+  milestones_min_prefs: 10
+  milestones_min_customs: 3
+  validation_benchmark_min_score: 0.7
+  validation_shadow_queries: 50
+  validation_shadow_max_hours: 24
+  validation_promotion_threshold: 0.6
+  sft_collection: true
+  dpo_collection: true
 user_name: Master
 voice:
   audio_chunk_size: 512
