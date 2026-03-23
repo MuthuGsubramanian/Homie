@@ -257,3 +257,293 @@ def register_email_tools(registry: ToolRegistry, email_service) -> None:
         execute=tool_email_digest,
         category="email",
     ))
+
+    # ── Thread tools ─────────────────────────────────────────────────
+
+    def tool_email_inbox_threads(account: str = "all", start: str = "0", max_results: str = "20") -> str:
+        threads = email_service.list_inbox_threads(
+            account=None if account == "all" else account,
+            start=int(start), max_results=int(max_results),
+        )
+        return _truncate(json.dumps([
+            {"id": t.id, "subject": t.subject, "participants": t.participants,
+             "message_count": t.message_count, "snippet": t.snippet}
+            for t in threads
+        ]))
+
+    registry.register(Tool(
+        name="email_inbox_threads",
+        description="List inbox conversation threads with pagination.",
+        params=[
+            ToolParam(name="account", description="Account or 'all'", type="string", required=False, default="all"),
+            ToolParam(name="start", description="Start offset", type="string", required=False, default="0"),
+            ToolParam(name="max_results", description="Max threads", type="string", required=False, default="20"),
+        ],
+        execute=tool_email_inbox_threads, category="email",
+    ))
+
+    def tool_email_thread_full(thread_id: str) -> str:
+        thread = email_service.get_thread_messages(thread_id)
+        if not thread:
+            return json.dumps({"error": "Thread not found"})
+        return _truncate(json.dumps({
+            "id": thread.id, "subject": thread.subject,
+            "messages": [m.to_dict() for m in thread.messages],
+        }))
+
+    registry.register(Tool(
+        name="email_thread_full",
+        description="Fetch complete conversation thread with all messages.",
+        params=[ToolParam(name="thread_id", description="Thread ID", type="string")],
+        execute=tool_email_thread_full, category="email",
+    ))
+
+    def tool_email_unread_counts(account: str = "all") -> str:
+        return json.dumps(email_service.get_unread_counts(
+            account=None if account == "all" else account,
+        ))
+
+    registry.register(Tool(
+        name="email_unread_counts",
+        description="Get unread email counts by category (inbox, spam, starred).",
+        params=[ToolParam(name="account", description="Account or 'all'", type="string", required=False, default="all")],
+        execute=tool_email_unread_counts, category="email",
+    ))
+
+    # ── Draft tools ──────────────────────────────────────────────────
+
+    def tool_email_list_drafts(account: str = "") -> str:
+        drafts = email_service.list_drafts(account=account or None)
+        return _truncate(json.dumps([
+            {"id": d.id, "subject": d.message.subject, "to": d.message.recipients}
+            for d in drafts
+        ]))
+
+    registry.register(Tool(
+        name="email_list_drafts", description="List all email drafts.",
+        params=[ToolParam(name="account", description="Account (optional)", type="string", required=False, default="")],
+        execute=tool_email_list_drafts, category="email",
+    ))
+
+    def tool_email_get_draft(draft_id: str) -> str:
+        draft = email_service.get_draft(draft_id)
+        if not draft:
+            return json.dumps({"error": "Draft not found"})
+        return _truncate(json.dumps({
+            "id": draft.id, "subject": draft.message.subject,
+            "to": draft.message.recipients, "body": draft.message.body,
+        }))
+
+    registry.register(Tool(
+        name="email_get_draft", description="Read a specific draft by ID.",
+        params=[ToolParam(name="draft_id", description="Draft ID", type="string")],
+        execute=tool_email_get_draft, category="email",
+    ))
+
+    def tool_email_update_draft(draft_id: str, to: str = "", subject: str = "", body: str = "", cc: str = "", bcc: str = "") -> str:
+        result = email_service.update_draft(draft_id, to, subject, body)
+        return json.dumps({"draft_id": result, "status": "updated"})
+
+    registry.register(Tool(
+        name="email_update_draft", description="Update an existing draft.",
+        params=[
+            ToolParam(name="draft_id", description="Draft ID", type="string"),
+            ToolParam(name="to", description="Recipient", type="string", required=False, default=""),
+            ToolParam(name="subject", description="Subject", type="string", required=False, default=""),
+            ToolParam(name="body", description="Body", type="string", required=False, default=""),
+            ToolParam(name="cc", description="CC (comma-separated)", type="string", required=False, default=""),
+            ToolParam(name="bcc", description="BCC (comma-separated)", type="string", required=False, default=""),
+        ],
+        execute=tool_email_update_draft, category="email",
+    ))
+
+    def tool_email_delete_draft(draft_id: str) -> str:
+        email_service.delete_draft(draft_id)
+        return json.dumps({"status": "deleted", "draft_id": draft_id})
+
+    registry.register(Tool(
+        name="email_delete_draft", description="Delete a draft permanently.",
+        params=[ToolParam(name="draft_id", description="Draft ID", type="string")],
+        execute=tool_email_delete_draft, category="email",
+    ))
+
+    # ── Send tools (HITL gated) ──────────────────────────────────────
+
+    def tool_email_send(to: str, subject: str, body: str, cc: str = "", bcc: str = "", attachments: str = "", account: str = "") -> str:
+        try:
+            att_list = [a.strip() for a in attachments.split(",") if a.strip()] if attachments else None
+            cc_list = [c.strip() for c in cc.split(",") if c.strip()] if cc else None
+            bcc_list = [b.strip() for b in bcc.split(",") if b.strip()] if bcc else None
+            msg_id = email_service.send_email(to=to, subject=subject, body=body, cc=cc_list, bcc=bcc_list, attachments=att_list, account=account or None)
+            return json.dumps({"message_id": msg_id, "status": "sent"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    registry.register(Tool(
+        name="email_send", description="Send an email directly. Requires user approval.",
+        params=[
+            ToolParam(name="to", description="Recipient", type="string"),
+            ToolParam(name="subject", description="Subject", type="string"),
+            ToolParam(name="body", description="Body", type="string"),
+            ToolParam(name="cc", description="CC (comma-separated)", type="string", required=False, default=""),
+            ToolParam(name="bcc", description="BCC (comma-separated)", type="string", required=False, default=""),
+            ToolParam(name="attachments", description="File paths (comma-separated)", type="string", required=False, default=""),
+            ToolParam(name="account", description="Send from account", type="string", required=False, default=""),
+        ],
+        execute=tool_email_send, category="email",
+    ))
+
+    def tool_email_send_draft(draft_id: str) -> str:
+        try:
+            msg_id = email_service.send_draft(draft_id)
+            return json.dumps({"message_id": msg_id, "status": "sent"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    registry.register(Tool(
+        name="email_send_draft", description="Send an existing draft. Requires user approval.",
+        params=[ToolParam(name="draft_id", description="Draft ID", type="string")],
+        execute=tool_email_send_draft, category="email",
+    ))
+
+    def tool_email_reply(message_id: str, body: str, send: str = "false") -> str:
+        try:
+            should_send = send.lower() == "true"
+            result_id = email_service.reply(message_id, body, send=should_send)
+            status = "sent" if should_send else "draft_created"
+            return json.dumps({"id": result_id, "status": status})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    registry.register(Tool(
+        name="email_reply", description="Reply to an email. Creates draft by default; set send=true to send (requires approval).",
+        params=[
+            ToolParam(name="message_id", description="Message ID to reply to", type="string"),
+            ToolParam(name="body", description="Reply body", type="string"),
+            ToolParam(name="send", description="'true' to send, 'false' for draft", type="string", required=False, default="false"),
+        ],
+        execute=tool_email_reply, category="email",
+    ))
+
+    def tool_email_reply_all(message_id: str, body: str, send: str = "false") -> str:
+        try:
+            should_send = send.lower() == "true"
+            result_id = email_service.reply_all(message_id, body, send=should_send)
+            status = "sent" if should_send else "draft_created"
+            return json.dumps({"id": result_id, "status": status})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    registry.register(Tool(
+        name="email_reply_all", description="Reply-all to an email. Creates draft by default; set send=true to send.",
+        params=[
+            ToolParam(name="message_id", description="Message ID to reply to", type="string"),
+            ToolParam(name="body", description="Reply body", type="string"),
+            ToolParam(name="send", description="'true' to send, 'false' for draft", type="string", required=False, default="false"),
+        ],
+        execute=tool_email_reply_all, category="email",
+    ))
+
+    def tool_email_forward(message_id: str, to: str, body: str = "", send: str = "false") -> str:
+        try:
+            should_send = send.lower() == "true"
+            result_id = email_service.forward(message_id, to, body, send=should_send)
+            status = "sent" if should_send else "draft_created"
+            return json.dumps({"id": result_id, "status": status})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    registry.register(Tool(
+        name="email_forward", description="Forward an email. Creates draft by default; set send=true to send.",
+        params=[
+            ToolParam(name="message_id", description="Message ID to forward", type="string"),
+            ToolParam(name="to", description="Forward to", type="string"),
+            ToolParam(name="body", description="Additional message", type="string", required=False, default=""),
+            ToolParam(name="send", description="'true' to send, 'false' for draft", type="string", required=False, default="false"),
+        ],
+        execute=tool_email_forward, category="email",
+    ))
+
+    # ── Attachment tools ─────────────────────────────────────────────
+
+    def tool_email_attachments(message_id: str) -> str:
+        attachments = email_service.get_attachments(message_id)
+        return _truncate(json.dumps([
+            {"id": a.id, "filename": a.filename, "mime_type": a.mime_type, "size": a.size}
+            for a in attachments
+        ]))
+
+    registry.register(Tool(
+        name="email_attachments", description="List attachments for an email message.",
+        params=[ToolParam(name="message_id", description="Message ID", type="string")],
+        execute=tool_email_attachments, category="email",
+    ))
+
+    def tool_email_download_attachment(message_id: str, attachment_id: str) -> str:
+        path = email_service.download_attachment(message_id, attachment_id)
+        if path:
+            return json.dumps({"status": "downloaded", "path": path})
+        return json.dumps({"error": "Download failed or path rejected"})
+
+    registry.register(Tool(
+        name="email_download_attachment", description="Download an email attachment to local storage.",
+        params=[
+            ToolParam(name="message_id", description="Message ID", type="string"),
+            ToolParam(name="attachment_id", description="Attachment ID", type="string"),
+        ],
+        execute=tool_email_download_attachment, category="email",
+    ))
+
+    # ── Knowledge / Insight tools ────────────────────────────────────
+
+    def tool_email_contact_insights(email_or_name: str) -> str:
+        result = email_service.get_contact_insights(email_or_name)
+        if not result:
+            return json.dumps({"error": "Contact not found"})
+        return _truncate(json.dumps({
+            "email": result.email, "name": result.name,
+            "organization": result.organization, "relationship": result.relationship,
+            "email_count": result.email_count, "topics": result.topics,
+            "pending_actions": result.pending_actions,
+        }))
+
+    registry.register(Tool(
+        name="email_contact_insights", description="Get relationship history, email frequency, topics, and pending actions for a contact.",
+        params=[ToolParam(name="email_or_name", description="Email address or contact name", type="string")],
+        execute=tool_email_contact_insights, category="email",
+    ))
+
+    def tool_email_topic_summary(topic: str) -> str:
+        return json.dumps({"summary": email_service.get_topic_summary(topic)})
+
+    registry.register(Tool(
+        name="email_topic_summary", description="Get cross-thread summary of a topic or project from email context.",
+        params=[ToolParam(name="topic", description="Topic or project name", type="string")],
+        execute=tool_email_topic_summary, category="email",
+    ))
+
+    def tool_email_pending_actions() -> str:
+        actions = email_service.get_pending_actions()
+        return _truncate(json.dumps([
+            {"id": a.id, "description": a.description, "assignee": a.assignee,
+             "deadline": a.deadline, "urgency": a.urgency}
+            for a in actions
+        ]))
+
+    registry.register(Tool(
+        name="email_pending_actions", description="List all pending action items extracted from emails, with deadlines and urgency.",
+        params=[], execute=tool_email_pending_actions, category="email",
+    ))
+
+    def tool_email_briefing(days: str = "1") -> str:
+        try:
+            num_days = int(days)
+        except (ValueError, TypeError):
+            num_days = 1
+        return email_service.get_email_insights(days=num_days)
+
+    registry.register(Tool(
+        name="email_briefing", description="Generate an AI-powered daily/weekly email intelligence briefing.",
+        params=[ToolParam(name="days", description="Days to cover", type="string", required=False, default="1")],
+        execute=tool_email_briefing, category="email",
+    ))
