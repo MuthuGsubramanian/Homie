@@ -211,6 +211,63 @@ class RedditProvider(
         return self._call("POST", "/api/compose", json_body=payload)
 
     # ------------------------------------------------------------------
+    # Convenience helpers (task-specific public API)
+    # ------------------------------------------------------------------
+
+    def get_subreddit_feed(self, subreddit: str, count: int = 20) -> list[dict]:
+        """Fetch hot posts from a specific subreddit as raw dicts."""
+        try:
+            data = self._call(
+                "GET", f"/r/{subreddit}/hot", params={"limit": count},
+            )
+            return [
+                child["data"]
+                for child in data.get("data", {}).get("children", [])
+            ]
+        except Exception:
+            logger.exception("get_subreddit_feed failed for r/%s", subreddit)
+            return []
+
+    def get_user_posts(self, count: int = 20) -> list[dict]:
+        """Fetch the authenticated user's own submitted posts as raw dicts."""
+        try:
+            data = self._call(
+                "GET",
+                f"/user/{self._username}/submitted",
+                params={"limit": count, "sort": "new"},
+            )
+            return [
+                child["data"]
+                for child in data.get("data", {}).get("children", [])
+            ]
+        except Exception:
+            logger.exception("get_user_posts failed")
+            return []
+
+    def search_subreddit(
+        self, query: str, subreddit: str = "all", count: int = 10,
+    ) -> list[dict]:
+        """Search posts in a subreddit (or r/all) and return raw dicts."""
+        try:
+            data = self._call(
+                "GET",
+                f"/r/{subreddit}/search",
+                params={
+                    "q": query,
+                    "restrict_sr": "on",
+                    "type": "link",
+                    "limit": count,
+                },
+            )
+            return [
+                child["data"]
+                for child in data.get("data", {}).get("children", [])
+            ]
+        except Exception:
+            logger.exception("search_subreddit failed")
+            return []
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
