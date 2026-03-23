@@ -445,7 +445,7 @@ def _init_adaptive_learner(cfg):
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="homie", description="Homie AI — Local Personal Assistant")
-    parser.add_argument("--version", action="version", version="homie-ai 0.1.0")
+    parser.add_argument("--version", action="version", version="homie-ai 1.0.0")
     parser.add_argument("--config", type=str, help="Path to config file")
     parser.add_argument("--no-voice", action="store_true", help="Disable voice pipeline")
     parser.add_argument("--no-tray", action="store_true", help="Disable system tray")
