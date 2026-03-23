@@ -130,6 +130,26 @@ class LearningStorage:
                 updated_at REAL NOT NULL,
                 UNIQUE(query_type, hardware_fingerprint)
             );
+
+            CREATE TABLE IF NOT EXISTS model_versions (
+                version_id TEXT PRIMARY KEY,
+                base_model TEXT NOT NULL,
+                ollama_name TEXT NOT NULL,
+                modelfile_hash TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'created',
+                metrics TEXT NOT NULL DEFAULT '{}',
+                changelog TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS training_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                example_type TEXT NOT NULL,
+                data TEXT NOT NULL,
+                quality_score REAL NOT NULL DEFAULT 0.0,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_training_type ON training_data(example_type);
         """)
         self._conn.commit()
 
@@ -287,6 +307,77 @@ class LearningStorage:
             (query_type, hardware_fp),
         ).fetchone()
         return json.loads(row["profile_data"]) if row else None
+
+    # --- Model version operations ---
+
+    def save_model_version(self, version_id: str, data: dict) -> None:
+        if self._conn is None:
+            return
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO model_versions
+                   (version_id, base_model, ollama_name, modelfile_hash, status, metrics, changelog, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (version_id, data.get("base_model", ""), data.get("ollama_name", ""),
+                 data.get("modelfile_hash", ""), data.get("status", "created"),
+                 data.get("metrics", "{}"), data.get("changelog", ""), time.time()),
+            )
+            self._conn.commit()
+
+    def get_active_model_version(self) -> Optional[dict]:
+        if self._conn is None:
+            return None
+        row = self._conn.execute("SELECT * FROM model_versions WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+    def update_model_version_status(self, version_id: str, status: str) -> None:
+        if self._conn is None:
+            return
+        with self._lock:
+            self._conn.execute("UPDATE model_versions SET status = ? WHERE version_id = ?", (status, version_id))
+            self._conn.commit()
+
+    def get_previous_model_version(self) -> Optional[dict]:
+        if self._conn is None:
+            return None
+        row = self._conn.execute("SELECT * FROM model_versions WHERE status = 'archived' ORDER BY created_at DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+    def list_model_versions(self) -> list[dict]:
+        if self._conn is None:
+            return []
+        rows = self._conn.execute("SELECT * FROM model_versions ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    # --- Training data operations ---
+
+    def save_training_example(self, example_type: str, data: str, quality_score: float = 0.0) -> None:
+        if self._conn is None:
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO training_data (example_type, data, quality_score, created_at) VALUES (?, ?, ?, ?)",
+                (example_type, data, quality_score, time.time()),
+            )
+            self._conn.commit()
+
+    def get_training_examples(self, example_type: Optional[str] = None, limit: int = 1000) -> list[dict]:
+        if self._conn is None:
+            return []
+        if example_type:
+            rows = self._conn.execute("SELECT * FROM training_data WHERE example_type = ? ORDER BY created_at DESC LIMIT ?", (example_type, limit)).fetchall()
+        else:
+            rows = self._conn.execute("SELECT * FROM training_data ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def count_training_examples(self) -> dict[str, int]:
+        if self._conn is None:
+            return {"sft": 0, "dpo": 0}
+        result = {}
+        for etype in ("sft", "dpo"):
+            row = self._conn.execute("SELECT COUNT(*) as c FROM training_data WHERE example_type = ?", (etype,)).fetchone()
+            result[etype] = row["c"] if row else 0
+        return result
 
     def close(self) -> None:
         """Close database connection."""

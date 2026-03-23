@@ -357,6 +357,21 @@ class KnowledgeGraphConfig(BaseModel):
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
 
 
+class ModelEvolutionConfig(BaseModel):
+    enabled: bool = True
+    ollama_registry_name: str = "MSG-88/Homie"
+    ollama_base_model: str = "lfm2"
+    milestones_min_facts: int = 50
+    milestones_min_prefs: int = 10
+    milestones_min_customs: int = 3
+    validation_benchmark_min_score: float = 0.7
+    validation_shadow_queries: int = 50
+    validation_shadow_max_hours: int = 24
+    validation_promotion_threshold: float = 0.6
+    sft_collection: bool = True
+    dpo_collection: bool = True
+
+
 class HomieConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
@@ -377,6 +392,7 @@ class HomieConfig(BaseModel):
     self_healing: SelfHealingConfig = Field(default_factory=SelfHealingConfig)
     adaptive_learning: AdaptiveLearningConfig = Field(default_factory=AdaptiveLearningConfig)
     knowledge_graph: KnowledgeGraphConfig = Field(default_factory=KnowledgeGraphConfig)
+    model_evolution: ModelEvolutionConfig = Field(default_factory=ModelEvolutionConfig)
 
 
 def _apply_env_overrides(cfg: HomieConfig) -> HomieConfig:
