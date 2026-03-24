@@ -3,11 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
     _HAS_FASTAPI = True
 except ImportError:
     FastAPI = None
+    Request = None
     JSONResponse = None
     _HAS_FASTAPI = False
 
@@ -18,6 +19,8 @@ def create_dashboard_app(
     belief_system=None,
     plugin_manager=None,
     suggestion_engine=None,
+    email_service=None,
+    session_token: str | None = None,
 ):
     if not _HAS_FASTAPI:
         raise ImportError(
@@ -67,5 +70,35 @@ def create_dashboard_app(
             memory_semantic.forget_topic(topic)
             return {"status": "ok", "forgotten": topic}
         return JSONResponse(status_code=400, content={"error": "Missing topic"})
+
+    # ---- session auth helper ----
+
+    def _check_auth(request: Request):
+        token = request.cookies.get("homie_session")
+        if not session_token or token != session_token:
+            raise __import__("fastapi").HTTPException(status_code=401, detail="Unauthorized")
+
+    # ---- email routes ----
+
+    @app.get("/api/email/summary")
+    def email_summary(request: Request):
+        _check_auth(request)
+        return email_service.get_summary()
+
+    @app.get("/api/email/unread")
+    def email_unread(request: Request):
+        _check_auth(request)
+        return email_service.get_unread()
+
+    @app.post("/api/email/triage")
+    def email_triage(request: Request):
+        _check_auth(request)
+        return email_service.triage()
+
+    @app.get("/api/email/digest")
+    def email_digest(request: Request):
+        _check_auth(request)
+        digest = email_service.get_intelligent_digest()
+        return {"digest": digest}
 
     return app
