@@ -238,4 +238,51 @@ def create_dashboard_app(
             return {"error": "Email not configured"}
         return email_service.read_message(message_id)
 
+    @app.get("/api/settings")
+    def get_settings(request: Request):
+        _check_auth(request)
+
+        # Inference status
+        inference_info = {
+            "active_source": "Not configured",
+            "priority": [],
+            "model": "",
+            "fallback_banner": None,
+        }
+        if inference_router:
+            inference_info["active_source"] = getattr(inference_router, "active_source", "Unknown")
+            inference_info["fallback_banner"] = getattr(inference_router, "fallback_banner", None)
+        if config:
+            inference_info["priority"] = getattr(getattr(config, "inference", None), "priority", [])
+            inference_info["model"] = getattr(getattr(config, "llm", None), "model_path", "")
+
+        # Email status
+        email_info: dict[str, Any] = {
+            "accounts": [],
+            "unread": 0,
+            "total_24h": 0,
+        }
+        if email_service:
+            email_info["accounts"] = list(getattr(email_service, "_providers", {}).keys())
+            try:
+                summary = email_service.get_summary(days=1)
+                email_info["unread"] = summary.get("unread", 0)
+                email_info["total_24h"] = summary.get("total", 0)
+            except Exception:
+                pass
+
+        # Privacy
+        privacy_info = {
+            "data_location": "~/.homie/",
+            "cloud_inference": inference_info["active_source"] not in ("Local", "Not configured"),
+            "all_local": inference_info["active_source"] == "Local",
+        }
+
+        return {
+            "inference": inference_info,
+            "email": email_info,
+            "privacy": privacy_info,
+            "user": {"name": getattr(config, "user_name", "User") if config else "User"},
+        }
+
     return app
