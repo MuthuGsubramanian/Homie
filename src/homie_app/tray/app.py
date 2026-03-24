@@ -12,12 +12,14 @@ class TrayApp:
         on_open_dashboard=None,
         on_open_briefing=None,
         on_open_chat=None,
+        on_open_settings=None,
     ):
         self._on_quit = on_quit
         self._on_toggle_voice = on_toggle_voice
         self._on_open_dashboard = on_open_dashboard
         self._on_open_briefing = on_open_briefing
         self._on_open_chat = on_open_chat
+        self._on_open_settings = on_open_settings
         self._icon = None
         self._thread: Optional[threading.Thread] = None
         self._voice_enabled = False
@@ -49,7 +51,7 @@ class TrayApp:
             menu = pystray.Menu(
                 pystray.MenuItem("Morning Briefing", self._briefing_clicked),
                 pystray.MenuItem("Chat", self._chat_clicked),
-                pystray.MenuItem("Dashboard", self._dashboard_clicked),
+                pystray.MenuItem("Settings", self._settings_clicked),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Toggle Voice", self._voice_clicked),
                 pystray.Menu.SEPARATOR,
@@ -67,6 +69,10 @@ class TrayApp:
     def _briefing_clicked(self, icon=None, item=None):
         if self._on_open_briefing:
             self._on_open_briefing()
+
+    def _settings_clicked(self, icon=None, item=None):
+        if self._on_open_settings:
+            self._on_open_settings()
 
     def _dashboard_clicked(self, icon=None, item=None):
         if self._on_open_dashboard:

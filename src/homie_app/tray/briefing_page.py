@@ -160,9 +160,18 @@ footer{{
   text-align:center;color:#484f58;font-size:.8rem;
   margin-top:3rem;padding-top:1rem;border-top:1px solid #21262d;
 }}
+.nav {{ display: flex; gap: 8px; padding: 12px 24px; background: #161b22; border-bottom: 1px solid #30363d; }}
+.nav a {{ color: #8b949e; text-decoration: none; font-size: 13px; padding: 6px 12px; border-radius: 6px; }}
+.nav a:hover {{ color: #c9d1d9; background: #21262d; }}
+.nav a.active {{ color: #f0f6fc; background: #21262d; }}
 </style>
 </head>
 <body>
+<div class="nav">
+  <a href="/briefing" class="active">Briefing</a>
+  <a href="/chat">Chat</a>
+  <a href="/settings">Settings</a>
+</div>
 <h1>{greeting}</h1>
 <p class="date">{escape(date_str)}</p>
 

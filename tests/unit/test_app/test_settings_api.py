@@ -81,3 +81,10 @@ def test_settings_no_services():
     data = resp.json()
     assert data["inference"]["active_source"] == "Not configured"
     assert data["email"]["accounts"] == []
+
+
+def test_settings_page_returns_html(client):
+    resp = client.get("/settings", cookies={"homie_session": "test-token"})
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Settings" in resp.text
