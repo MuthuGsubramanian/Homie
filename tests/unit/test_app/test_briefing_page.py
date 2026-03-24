@@ -35,3 +35,18 @@ def test_render_briefing_page_empty():
     )
     assert "0" in html or "inbox zero" in html.lower() or "No emails" in html
     assert "<html" in html
+
+
+def test_briefing_page_has_nav():
+    from homie_app.tray.briefing_page import render_briefing_page
+    html = render_briefing_page(
+        user_name="Test",
+        summary={"total": 0, "unread": 0, "high_priority": []},
+        unread={"high": [], "medium": [], "low": []},
+        digest="No emails.",
+        session_token="tok",
+        api_port=8721,
+    )
+    assert "/chat" in html
+    assert "/settings" in html
+    assert "nav" in html

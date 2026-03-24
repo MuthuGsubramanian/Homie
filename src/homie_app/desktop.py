@@ -159,6 +159,10 @@ class DesktopCompanion:
             url = f"http://127.0.0.1:{self._port}/chat"
             webbrowser.open(url)
 
+        def open_settings():
+            url = f"http://127.0.0.1:{self._port}/settings"
+            webbrowser.open(url)
+
         def on_quit():
             self._running = False
 
@@ -166,6 +170,7 @@ class DesktopCompanion:
             on_open_briefing=open_briefing,
             on_open_dashboard=open_briefing,
             on_open_chat=open_chat,
+            on_open_settings=open_settings,
             on_quit=on_quit,
         )
 
