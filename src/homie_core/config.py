@@ -8,6 +8,8 @@ from typing import Optional
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from homie_core.finetune.config import FinetuneConfig
+
 
 class ModelTier(str, Enum):
     SMALL = "small"
@@ -190,6 +192,7 @@ class ConnectionsConfig(BaseModel):
     whatsapp: WhatsAppConnection = Field(default_factory=WhatsAppConnection)
     phone_link: PhoneLinkConnection = Field(default_factory=PhoneLinkConnection)
     blog: BlogConnection = Field(default_factory=BlogConnection)
+    gcp: ConnectionState = Field(default_factory=ConnectionState)
 
 
 class LocationConfig(BaseModel):
@@ -206,6 +209,24 @@ class QubridConfig(BaseModel):
     timeout: int = 30
 
 
+class VertexAIConfig(BaseModel):
+    enabled: bool = False
+    project_id: str = ""
+    region: str = "us-central1"
+    model: str = "google/gemini-2.0-flash-001"
+    timeout: int = 30
+
+
+class GCPConfig(BaseModel):
+    project_id: str = ""
+    region: str = "us-central1"
+    credentials_json: str = ""  # Path to service account JSON (optional, ADC preferred)
+    vertex: VertexAIConfig = Field(default_factory=VertexAIConfig)
+    storage_bucket: str = ""  # GCS bucket for backups/sync
+    tts_enabled: bool = False  # Cloud Text-to-Speech fallback
+    stt_enabled: bool = False  # Cloud Speech-to-Text fallback
+
+
 class LANInferenceConfig(BaseModel):
     prefer_desktop: bool = True
     max_latency_ms: int = 500
@@ -214,6 +235,7 @@ class LANInferenceConfig(BaseModel):
 class InferenceConfig(BaseModel):
     priority: list[str] = ["local", "lan", "qubrid"]
     qubrid: QubridConfig = QubridConfig()
+    vertex: VertexAIConfig = Field(default_factory=VertexAIConfig)
     lan: LANInferenceConfig = LANInferenceConfig()
 
 
@@ -359,8 +381,9 @@ class KnowledgeGraphConfig(BaseModel):
 
 class ModelEvolutionConfig(BaseModel):
     enabled: bool = True
-    ollama_registry_name: str = "MSG-88/Homie"
+    ollama_registry_name: str = "PyMasters/Homie"
     ollama_base_model: str = "lfm2"
+    ollama_subscription_email: str = ""
     milestones_min_facts: int = 50
     milestones_min_prefs: int = 10
     milestones_min_customs: int = 3
@@ -403,7 +426,9 @@ class HomieConfig(BaseModel):
     adaptive_learning: AdaptiveLearningConfig = Field(default_factory=AdaptiveLearningConfig)
     knowledge_graph: KnowledgeGraphConfig = Field(default_factory=KnowledgeGraphConfig)
     model_evolution: ModelEvolutionConfig = Field(default_factory=ModelEvolutionConfig)
+    finetune: FinetuneConfig = Field(default_factory=FinetuneConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
+    gcp: GCPConfig = Field(default_factory=GCPConfig)
 
 
 def _apply_env_overrides(cfg: HomieConfig) -> HomieConfig:
