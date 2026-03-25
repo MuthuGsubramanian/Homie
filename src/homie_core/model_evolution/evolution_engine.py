@@ -26,7 +26,7 @@ class EvolutionEngine:
         profiler,
         inference_fn: Callable[[str], str],
         base_model: str = "lfm2",
-        registry_name: str = "MSG-88/Homie",
+        registry_name: str = "PyMasters/Homie",
         user_name: str = "Master",
         modelfile_dir: str | Path = "",
         benchmark_threshold: float = 0.7,
@@ -150,3 +150,20 @@ class EvolutionEngine:
             "version": version.version_id,
             "benchmark_scores": benchmark.scores,
         }
+
+    def evolve_finetune(self, base_dir: str | Path | None = None) -> dict:
+        """Run recursive finetuning pipeline (long-running, call from scheduler)."""
+        from homie_core.finetune.pipeline import RecursiveFinetuneLoop
+        from homie_core.finetune.config import FinetuneConfig
+
+        cfg = FinetuneConfig()
+        if base_dir is None:
+            base_dir = Path.home() / ".homie" / "finetune"
+        loop = RecursiveFinetuneLoop(
+            config=cfg,
+            inference_fn=self._infer,
+            ollama_manager=self._ollama,
+            model_registry=self._registry,
+            base_dir=Path(base_dir),
+        )
+        return loop.run()
