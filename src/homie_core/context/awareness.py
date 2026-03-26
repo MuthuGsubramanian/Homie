@@ -225,11 +225,13 @@ class ContextualAwareness:
         """Build a complete system prompt with all context injected."""
         ctx = self.refresh()
         from homie_app.prompts.system import build_system_prompt
+        # Use full system context (includes email, project, services, git)
+        full_context = ctx.to_system_context()
         return build_system_prompt(
             user_name=ctx.user_name,
             time_of_day=ctx.time_of_day,
             known_facts=ctx.known_facts,
-            email_context=ctx.email_briefing,
+            email_context=full_context,
         )
 
     def get_greeting(self) -> str:
