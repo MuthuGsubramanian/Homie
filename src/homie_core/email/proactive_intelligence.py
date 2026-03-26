@@ -187,22 +187,39 @@ class ProactiveEmailIntelligence:
         snippet = msg.get("snippet", "")
         priority = msg.get("priority", "medium")
         categories = msg.get("categories", "")
+        labels = msg.get("labels", "")
 
         # Sender name extraction
         sender_name = sender.split("<")[0].strip().strip('"') if "<" in sender else sender.split("@")[0]
+        sender_email = ""
+        if "<" in sender and ">" in sender:
+            sender_email = sender.split("<")[1].split(">")[0].lower()
+        else:
+            sender_email = sender.lower()
 
         # Rule-based insight extraction
         subject_lower = subject.lower()
         snippet_lower = snippet.lower()
         combined = f"{subject_lower} {snippet_lower}"
 
-        # Deadline detection
-        deadline_keywords = ["deadline", "due by", "due date", "expires", "by end of", "before", "no later than"]
+        # --- Priority boosting based on Gmail labels ---
+        if "IMPORTANT" in labels:
+            priority = "high"
+
+        # --- Sender importance classification ---
+        important_domains = ["github.com", "linkedin.com", "google.com", "microsoft.com"]
+        personal_indicators = ["@gmail.com", "@outlook.com", "@yahoo.com", "@hotmail.com"]
+        is_from_important = any(d in sender_email for d in important_domains)
+        is_personal = any(d in sender_email for d in personal_indicators)
+
+        # --- Deadline detection ---
+        deadline_keywords = ["deadline", "due by", "due date", "expires", "by end of",
+                           "before", "no later than", "last day", "closing date"]
         if any(kw in combined for kw in deadline_keywords):
             insights.append(EmailInsight(
                 category="deadline",
                 priority="high" if priority == "high" else "medium",
-                subject=f"Deadline mention: {subject[:60]}",
+                subject=f"Deadline: {subject[:60]}",
                 detail=snippet[:200],
                 source_email_id=msg.get("id", ""),
                 source_subject=subject,
@@ -210,10 +227,11 @@ class ProactiveEmailIntelligence:
                 suggested_action="Review and note the deadline in your calendar",
             ))
 
-        # Action required detection
+        # --- Action required detection ---
         action_keywords = ["action required", "please review", "please confirm", "your approval",
                           "sign off", "needs your", "waiting for your", "please respond",
-                          "can you", "could you", "would you", "asap", "urgently"]
+                          "can you", "could you", "would you", "asap", "urgently",
+                          "immediately", "time-sensitive", "respond by"]
         if any(kw in combined for kw in action_keywords):
             urgency = "urgent" if any(kw in combined for kw in ["asap", "urgently", "immediately"]) else "high"
             insights.append(EmailInsight(
@@ -225,6 +243,65 @@ class ProactiveEmailIntelligence:
                 source_subject=subject,
                 source_sender=sender_name,
                 suggested_action=f"Reply to {sender_name} or take requested action",
+            ))
+
+        # --- Security/account alerts ---
+        security_keywords = ["security", "suspicious", "unauthorized", "password", "verify your",
+                            "account alert", "fraud", "stolen", "beware", "phishing", "breach"]
+        if any(kw in combined for kw in security_keywords):
+            insights.append(EmailInsight(
+                category="important_update",
+                priority="high",
+                subject=f"Security alert: {subject[:60]}",
+                detail=snippet[:200],
+                source_email_id=msg.get("id", ""),
+                source_subject=subject,
+                source_sender=sender_name,
+                suggested_action="Review this security notice carefully",
+            ))
+
+        # --- Policy/terms updates (important for developers) ---
+        policy_keywords = ["policy update", "terms of service", "privacy policy", "data usage",
+                          "important update", "changes to", "updated terms", "new policy"]
+        if any(kw in combined for kw in policy_keywords):
+            insights.append(EmailInsight(
+                category="important_update",
+                priority="medium",
+                subject=f"Policy update: {subject[:60]}",
+                detail=snippet[:200],
+                source_email_id=msg.get("id", ""),
+                source_subject=subject,
+                source_sender=sender_name,
+                suggested_action="Review changes when convenient",
+            ))
+
+        # --- Developer/project related ---
+        dev_keywords = ["pull request", "merge", "build", "deploy", "ci/cd", "pipeline",
+                       "invited you", "repository", "commit", "release", "version",
+                       "api", "developer", "sdk", "verified", "approved", "application"]
+        if any(kw in combined for kw in dev_keywords):
+            insights.append(EmailInsight(
+                category="important_update" if is_from_important else "opportunity",
+                priority="high" if "invited" in combined or "approved" in combined else "medium",
+                subject=f"Dev: {subject[:60]}",
+                detail=snippet[:200],
+                source_email_id=msg.get("id", ""),
+                source_subject=subject,
+                source_sender=sender_name,
+                suggested_action="Review and take action if needed",
+            ))
+
+        # --- LinkedIn-specific (networking opportunities) ---
+        if "linkedin" in sender_email:
+            insights.append(EmailInsight(
+                category="opportunity",
+                priority="medium",
+                subject=f"LinkedIn: {subject[:60]}",
+                detail=snippet[:200],
+                source_email_id=msg.get("id", ""),
+                source_subject=subject,
+                source_sender=sender_name,
+                suggested_action="Check LinkedIn for updates",
             ))
 
         # Financial / bills
@@ -324,8 +401,21 @@ Respond with a JSON object:
             parts.append(f"{len(deadlines)} deadline{'s' if len(deadlines) > 1 else ''} mentioned")
 
         if parts:
-            return f"{total_unread} unread ({high_priority} high-priority): " + "; ".join(parts) + "."
-        return f"{total_unread} unread emails, {high_priority} high-priority."
+            return f"You have {total_unread} unread emails: " + "; ".join(parts) + "."
+
+        # Categorize remaining insights for a richer summary
+        dev = [i for i in insights if i.subject.startswith("Dev:")]
+        linkedin = [i for i in insights if i.subject.startswith("LinkedIn:")]
+        security = [i for i in insights if "security" in i.subject.lower() or "alert" in i.subject.lower()]
+        if dev:
+            parts.append(f"{len(dev)} developer update{'s' if len(dev) > 1 else ''}")
+        if linkedin:
+            parts.append(f"{len(linkedin)} LinkedIn notification{'s' if len(linkedin) > 1 else ''}")
+        if security:
+            parts.append(f"{len(security)} security notice{'s' if len(security) > 1 else ''}")
+        if parts:
+            return f"You have {total_unread} unread emails: " + ", ".join(parts) + "."
+        return f"You have {total_unread} unread emails, mostly routine updates."
 
     def _suggest_focus(self, insights: list[EmailInsight]) -> str:
         """Suggest what to focus on based on insights."""
