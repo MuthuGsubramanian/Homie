@@ -7,3 +7,4 @@ fastapi==0.109.1
 uvicorn==0.25.0
 apscheduler==3.10.4
 psutil==5.9.7
+zeroconf==0.131.0
