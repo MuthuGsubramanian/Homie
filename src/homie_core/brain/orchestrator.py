@@ -9,7 +9,10 @@ when cognitive architecture components are not fully wired.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterator, Optional
+
+logger = logging.getLogger(__name__)
 
 from homie_core.memory.working import WorkingMemory
 from homie_core.memory.episodic import EpisodicMemory
@@ -166,8 +169,8 @@ class BrainOrchestrator:
                     if len(fact_text) + 5 <= budget:
                         parts.append(f"- {fact_text}")
                         budget -= len(fact_text) + 5
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Semantic memory lookup failed in prompt builder: %s", e)
 
         if self._em and budget > 100:
             try:
@@ -176,8 +179,8 @@ class BrainOrchestrator:
                     ep = episodes[0]["summary"][:150]
                     parts.append(f"\nRelated: {ep}")
                     budget -= len(ep) + 12
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Episodic memory recall failed in prompt builder: %s", e)
 
         parts.append(f"\nUser: {user_input}\nAssistant:")
         return "\n".join(parts)

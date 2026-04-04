@@ -19,11 +19,14 @@ Algorithms:
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional
+
+logger = logging.getLogger(__name__)
 
 from homie_core.memory.working import WorkingMemory
 from homie_core.memory.episodic import EpisodicMemory
@@ -342,7 +345,8 @@ class CognitiveArchitecture:
         try:
             entities, _relationships = self._entity_extractor.extract(text, source="query")
             return entities
-        except Exception:
+        except Exception as e:
+            logger.warning("Entity extraction failed for query entities: %s", e)
             return []
 
     # ------------------------------------------------------------------
@@ -391,7 +395,8 @@ class CognitiveArchitecture:
             if not context_parts:
                 return ""
             return "\n[GRAPH]\n" + "\n".join(context_parts)
-        except Exception:
+        except Exception as e:
+            logger.warning("Knowledge graph retrieval failed: %s", e)
             return ""
 
     # ------------------------------------------------------------------
@@ -412,8 +417,8 @@ class CognitiveArchitecture:
                 self._kg.merge_entity(entity)
             for rel in relationships:
                 self._kg.add_relationship(rel)
-        except Exception:
-            pass  # Never break the pipeline for graph storage failures
+        except Exception as e:
+            logger.warning("Knowledge graph entity storage failed: %s", e)  # Never break the pipeline
 
     # ------------------------------------------------------------------
     # Stage 2: CLASSIFY — determine query complexity
@@ -474,7 +479,8 @@ class CognitiveArchitecture:
                 result.append(ep)
                 used += len(text) + 5
             return result
-        except Exception:
+        except Exception as e:
+            logger.warning("Episodic memory recall failed: %s", e)
             return []
 
     def _retrieve_documents(self, query: str, budget: int, top_k: int = 5) -> str:
@@ -486,7 +492,8 @@ class CognitiveArchitecture:
             return ""
         try:
             return self._rag.build_context_block(query, max_chars=budget, top_k=top_k)
-        except Exception:
+        except Exception as e:
+            logger.warning("RAG document retrieval failed: %s", e)
             return ""
 
     # ------------------------------------------------------------------
