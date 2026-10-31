@@ -231,7 +231,7 @@ class HomieDaemon:
         except Exception as e:
             print(f"  Vault: failed to unlock ({e})")
 
-        # Auto-provision internal cloud AI key on first run
+        # Optional cloud fallback: stores the user's own Qubrid key if HOMIE_QUBRID_KEY is set (none ships with Homie)
         try:
             from homie_core.cloud_ai_provision import provision as _provision_cloud
             if _provision_cloud(self._vault):

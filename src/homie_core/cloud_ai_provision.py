@@ -1,19 +1,24 @@
-"""One-time provisioning of the internal cloud AI key.
+"""Optional provisioning of a Qubrid cloud AI key.
 
-Run once to store the Qubrid API key in the vault:
-    python -m homie_core.cloud_ai_provision
+Homie ships no cloud key: it is fully local by default. A user who wants the Qubrid
+cloud fallback provides their own key once, which is then kept in the encrypted vault:
+    HOMIE_QUBRID_KEY=... python -m homie_core.cloud_ai_provision
 """
 from __future__ import annotations
+
+import os
 
 from homie_core.vault.secure_vault import SecureVault
 from homie_core.cloud_ai import store_cloud_key, is_configured
 
 
-_QUBRID_KEY = "REMOVED_QUBRID_KEY"
 
 
 def provision(vault: SecureVault | None = None) -> bool:
-    """Store the internal cloud AI key in the vault. Returns True if newly stored."""
+    """Store the user's own Qubrid key (HOMIE_QUBRID_KEY) in the vault. Returns True if newly stored."""
+    key = os.environ.get("HOMIE_QUBRID_KEY", "").strip()
+    if not key:
+        return False
     own_vault = vault is None
     if own_vault:
         vault = SecureVault()
@@ -21,7 +26,7 @@ def provision(vault: SecureVault | None = None) -> bool:
     try:
         if is_configured(vault):
             return False
-        store_cloud_key(vault, _QUBRID_KEY)
+        store_cloud_key(vault, key)
         return True
     finally:
         if own_vault:
@@ -31,6 +36,6 @@ def provision(vault: SecureVault | None = None) -> bool:
 if __name__ == "__main__":
     stored = provision()
     if stored:
-        print("Internal cloud AI key provisioned successfully.")
+        print("Qubrid key stored in the vault.")
     else:
-        print("Internal cloud AI key already configured.")
+        print("Nothing stored: set HOMIE_QUBRID_KEY to your own key, or a key is already configured.")
