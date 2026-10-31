@@ -28,10 +28,13 @@ class InferenceRouter:
         config: HomieConfig,
         model_engine: ModelEngine,
         qubrid_api_key: str = "",
+        lan_device_id: str = "",
+        lan_device_name: str = "",
     ):
         self._config = config
         self._engine = model_engine
         self._qubrid = None
+        self._lan = None
         self._priority = config.inference.priority
 
         if qubrid_api_key and config.inference.qubrid.enabled:
@@ -44,13 +47,24 @@ class InferenceRouter:
             )
             self._qubrid.check_available()
 
+        if lan_device_id and "lan" in self._priority:
+            try:
+                from homie_core.inference.lan_client import LANInferenceClient
+                self._lan = LANInferenceClient(
+                    device_id=lan_device_id,
+                    device_name=lan_device_name,
+                )
+                self._lan.start()
+            except Exception as exc:
+                logger.warning("Failed to start LAN inference client: %s", exc)
+
     @property
     def active_source(self) -> str:
         for source in self._priority:
             if source == "local" and self._engine.is_loaded:
                 return "Local"
-            if source == "lan":
-                continue  # LAN support added later
+            if source == "lan" and self._lan and self._lan.is_available:
+                return "LAN Peer"
             if source == "qubrid" and self._qubrid and self._qubrid.is_available:
                 return "Homie Intelligence (Cloud)"
         return "None"
@@ -90,8 +104,11 @@ class InferenceRouter:
                         prompt, max_tokens=max_tokens,
                         temperature=temperature, stop=stop, timeout=timeout,
                     )
-                if source == "lan":
-                    continue
+                if source == "lan" and self._lan and self._lan.is_available:
+                    return self._lan.generate(
+                        prompt, max_tokens=max_tokens,
+                        temperature=temperature, stop=stop,
+                    )
                 if source == "qubrid" and self._qubrid and self._qubrid.is_available:
                     return self._qubrid.generate(
                         prompt, max_tokens=max_tokens,
@@ -133,8 +150,12 @@ class InferenceRouter:
                         temperature=temperature, stop=stop,
                     )
                     return
-                if source == "lan":
-                    continue
+                if source == "lan" and self._lan and self._lan.is_available:
+                    yield from self._lan.stream(
+                        prompt, max_tokens=max_tokens,
+                        temperature=temperature, stop=stop,
+                    )
+                    return
                 if source == "qubrid" and self._qubrid and self._qubrid.is_available:
                     yield from self._qubrid.stream(
                         prompt, max_tokens=max_tokens,
